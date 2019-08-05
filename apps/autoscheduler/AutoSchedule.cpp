@@ -1450,6 +1450,12 @@ struct LoopNest {
     IntrusivePtr<const LoopNest> parallelize_in_tiles(const MachineParams &params,
                                                       const vector<int64_t> &tiling,
                                                       const LoopNest *parent) const {
+      /*
+      std::cout << "parallelize_in_tiles" << std::endl;
+      for (int i = 0; i < tiling.size(); i++)
+        std::cout << tiling[i] << " ";
+      std::cout << std::endl;
+      */
 
         // Split this loop and move factors to the inner loop
         LoopNest *inner = new LoopNest, *outer = new LoopNest;
@@ -2260,8 +2266,8 @@ struct State {
             for (auto it = features.begin(); it != features.end(); it++) {
                 auto &stage = *(it.key());
                 const auto &feat = it.value();
-                debug(0) << "Schedule features for " << stage.stage.name() << "\n";
-                feat.dump();
+                //debug(0) << "Schedule features for " << stage.stage.name() << "\n";
+                //feat.dump();
             }
         }
 
@@ -2349,14 +2355,19 @@ struct State {
                            std::function<void(IntrusivePtr<State> &&)> &accept_child) const {
         internal_assert(root.defined() && root->is_root());
 
+        // return if it already reached the end
         if (num_decisions_made == 2*(int)dag.nodes.size()) {
             return;
         }
 
         int next_node = num_decisions_made / 2;
+        // phase!
+        // 1: choose granularity & tile number
+        // 2: how to parallelize
         int phase = num_decisions_made % 2;
 
         if (!may_subtile()) {
+          //std::cout << __LINE__ << std::endl;
             // When emulating the older search space, we do all
             // parallelizing last, so that it is independent of the
             // tiling decisions.
@@ -2367,12 +2378,14 @@ struct State {
         // Enumerate all legal ways to schedule the next Func
         const FunctionDAG::Node *node = &dag.nodes[next_node];
         for (const auto *e : node->outgoing_edges) {
+          //std::cout << __LINE__ << e->consumer->name << std::endl;
             internal_assert(root->computes(e->consumer->node))
                 << "Partially scheduled code doesn't compute " << e->consumer->name
                 << ", which is one of the consumers of " << node->func.name();
         }
 
         if (node->is_input) {
+          //std::cout << __LINE__ << std::endl;
             // We don't need to schedule nodes that represent inputs,
             // and there are no other decisions to be made about them
             // at this time.
@@ -2384,6 +2397,7 @@ struct State {
         }
 
         if (!node->outgoing_edges.empty() && !root->calls(node)) {
+          //std::cout << __LINE__ << std::endl;
             debug(0) << "In state:\n";
             dump();
             debug(0) << node->func.name() << " is consumed by:\n";
@@ -2400,6 +2414,7 @@ struct State {
         int num_children = 0;
 
         if (phase == 0) {
+          //std::cout << __LINE__ << std::endl;
             // Injecting realizations
             {
                 // 1) Inline it
@@ -2472,11 +2487,14 @@ struct State {
                 }
             }
         } else {
+          //std::cout << __LINE__ << std::endl;
             // We are parallelizing the loops of the func we just injected a realization for.
 
+          std::cout << "parallelism: " << params.parallelism << std::endl;
             bool should_parallelize = false;
             const vector<int64_t> *pure_size = nullptr;
             if (params.parallelism > 1) {
+          //std::cout << __LINE__ << std::endl;
                 for (auto &c : root->children) {
                     if (c->node == node && node->dimensions > 0) {
                         if (c->stage->index == 0) {
@@ -2488,6 +2506,7 @@ struct State {
             }
 
             if (!should_parallelize) {
+          //std::cout << __LINE__ << std::endl;
                 // The Func must be scalar, or not compute_root, or
                 // we're not asking to use multiple cores.  Just
                 // return a copy of the parent state
@@ -2496,15 +2515,23 @@ struct State {
                 child->num_decisions_made++;
                 accept_child(std::move(child));
             } else {
+          //std::cout << __LINE__ << std::endl;
+
+                // test!
+            int in_x, in_y;
+            std::cout << "Specify the tiling \"x y\": ";
+            std::cin >> in_x >> in_y;
+
                 internal_assert(pure_size);
 
                 // Generate some candidate parallel task shapes.
-                auto tilings = generate_tilings(*pure_size, node->dimensions - 1, 2, true);
+                //auto tilings = generate_tilings(*pure_size, node->dimensions - 1, 2, true);
 
                 // We could also just parallelize the outer loop entirely
-                std::vector<int64_t> ones;
-                ones.resize(pure_size->size(), 1);
-                tilings.emplace_back(std::move(ones));
+                //std::vector<int64_t> ones;
+                //ones.resize(pure_size->size(), 1);
+                //tilings.emplace_back(std::move(ones));
+                std::vector<std::vector<int64_t>> tilings = {{in_x, in_y}};
 
                 // Sort / filter the options
                 struct Option {
@@ -2525,10 +2552,21 @@ struct State {
                 vector<Option> options;
                 for (size_t i = 0; i < tilings.size(); i++) {
                     auto &t = tilings[i];
+
+                    /*
+                  std::cout << t.size() << std::endl;
+                  for (int hoge = 0; hoge < t.size(); hoge++)
+                    std::cout << t[hoge] << " ";
+                  std::cout << std::endl;
+                  std::cout << std::endl;
+                  */
+
                     Option o;
                     o.entire = (i == tilings.size() - 1);
 
+                    // Converting tiling size to parallelize size?
                     for (size_t j = 0; j < pure_size->size(); j++) {
+                        //std::cout << "pure_size[j]: " << (*pure_size)[j] << std::endl;
                         t[j] = ((*pure_size)[j] + t[j] - 1) / t[j];
                     }
                     t.swap(o.tiling);
@@ -2592,8 +2630,10 @@ struct State {
                     for (auto &c : new_root->children) {
                         if (c->node == node) {
                             if (may_subtile()) {
+                              //std::cout << __LINE__ << std::endl;
                                 c = c->parallelize_in_tiles(params, o.tiling, new_root);
                             } else {
+                              //std::cout << __LINE__ << std::endl;
                                 // We're emulating the old
                                 // autoscheduler for an ablation, so
                                 // emulate its parallelism strategy:
@@ -2901,6 +2941,8 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                           int num_passes,
                                           std::unordered_set<uint64_t> &permitted_hashes) {
 
+  //std::cout << "beam size: " << beam_size << std::endl;
+  //std::cout << "num passes: " << num_passes << std::endl;
     if (cost_model) {
         configure_pipeline_features(dag, params, cost_model);
     }
@@ -2994,10 +3036,15 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
 
         expanded = 0;
         while (expanded < beam_size && !pending.empty()) {
+              //std::cout << __LINE__ << std::endl;
+              //std::cout << "expanded: " << expanded << std::endl;
+              //std::cout << "pending: " << pending.size() << std::endl;
 
             IntrusivePtr<State> state {pending.pop()};
 
+            // Don't need for scheduling tool.
             if (beam_size > 1 && num_passes > 1) {
+              //std::cout << __LINE__ << std::endl;
                 // We are doing coarse-to-fine beam search using the
                 // hashing strategy mentioned in the paper.
                 //
@@ -3039,7 +3086,10 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                 continue;
             }
 
+            // End of scheduling.
+            // *2 because there are two steps for one node.
             if (state->num_decisions_made == 2*(int)dag.nodes.size()) {
+              //std::cout << __LINE__ << std::endl;
                 // We've reached the end of the pass. The first state
                 // must be the best, because we're pulling off a
                 // priority queue.
@@ -3051,6 +3101,7 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                 // than the cost of the best thing. Only do this if
                 // there are more coarse-to-fine passes yet to come.
                 if (pass_idx + 1 < num_passes) {
+              //std::cout << __LINE__ << std::endl;
                     int blessed = 0;
                     while (state->cost <= 1.2 * best->cost && blessed < beam_size) {
                         const State *s = state.get();
@@ -3076,12 +3127,14 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         pending.clear();
 
         if (cost_model) {
+              //std::cout << __LINE__ << std::endl;
             // Now evaluate all the costs and re-sort them in the priority queue
             cost_model->evaluate_costs();
             q.resort();
         }
 
         if (cyos_str == "1") {
+              //std::cout << __LINE__ << std::endl;
             // The user has set HL_CYOS, and wants to navigate the
             // search space manually.  Discard everything in the queue
             // except for the user-chosen option.
@@ -3103,8 +3156,9 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             }
 
             auto selected = q[selection];
-            selected->dump();
+            //selected->dump();
             q.clear();
+            // 最後にはqにひとつだけ入っているようにする
             q.emplace(std::move(selected));
         }
     }
@@ -3160,6 +3214,12 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
 std::string generate_schedule(const std::vector<Function> &outputs,
                               const Target &target,
                               const MachineParams &params) {
+  /*
+  std::cout << "hogee!" << std::endl;
+  for (auto f: outputs)
+    std::cout << f.name() << std::endl;;
+  std::cout << "hugaa!" << std::endl;
+  */
     // Start a timer
     HALIDE_TIC;
 
@@ -3218,6 +3278,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     optimal->calculate_cost(dag, params, cost_model.get(), true);
 
     // Apply the schedules to the pipeline
+    // memo: make Halide schedule here
     optimal->apply_schedule(dag, params);
 
     // Print out the schedule
