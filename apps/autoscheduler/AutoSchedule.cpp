@@ -75,6 +75,7 @@
 #include "Errors.h"
 #include "NetworkSize.h"
 #include "AutoSchedule.h"
+#include "../../src/PrintLoopNest.h"
 
 int hogehoge = 0;
 int hugahuga = 0;
@@ -2506,9 +2507,10 @@ struct State {
 
             // Specify the granularity here!!
             int gra;
-            std::cout << "(Phase 0) Specify the granularity number ";
+            std::cout << "(Phase 0) Specify the compute_at location of " << node->func.name() << " : ";
             std::cout << "(0 ~ " << tile_options.size() - 1 << ") : ";
             std::cin >> gra;
+            std::cout << std::endl;
 
             IntrusivePtr<const LoopNest> ln = tile_options[gra];
             auto child = make_child();
@@ -2551,6 +2553,7 @@ struct State {
                 int in_x, in_y;
                 std::cout << "Specify the tiling \"x y\": ";
                 std::cin >> in_x >> in_y;
+                std::cout << std::endl;
 
                 std::vector<std::vector<int64_t>> tilings = {{in_x, in_y}};
 
@@ -3167,6 +3170,11 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             auto selected = q[selection];
             */
             auto selected = q[0];
+            //selected->root->node->func.print_loop_nest();
+//            std::cout << Halide::Internal::print_loop_nest(outputs) << std::endl;
+            //std::cout << Halide::Internal::print_loop_nest({selected->root->node->func}) << std::endl;
+
+            //selected->apply_schedule(dag, params);
             //selected->dump();
             q.clear();
             // 最後にはqにひとつだけ入っているようにする
