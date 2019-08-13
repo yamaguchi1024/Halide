@@ -2512,8 +2512,8 @@ struct State {
             // Specify the granularity here!!
             int gra;
             if (root->children.size() != 0) {
-                std::cout << "(Phase 0) Specify the compute_at location of " << node->func.name() << " : ";
-                std::cout << "(0 ~ " << tile_options.size() - 1 << ") : ";
+                std::cout << "(Phase 0) Specify the compute_at location of " << node->func.name();
+                std::cout << " (0 ~ " << tile_options.size() - 1 << ") : " << std::endl;;
                 std::cin >> gra;
                 std::cout << std::endl;
             } else {
