@@ -2438,6 +2438,12 @@ struct State {
 
         int num_children = 0;
 
+        // Dump the current schedule HERE!
+        hogehoge = 0;
+        if (root->children.size() != 0)
+            root->dump_one("");
+        debug(0) << "\n";
+
         if (phase == 0) {
             // Injecting realizations
             {
@@ -2502,15 +2508,17 @@ struct State {
             //for (int vector_dim : vector_dims) {
             int vector_dim = vector_dims[0];
             auto tile_options = root->compute_in_tiles(node, nullptr, params, vector_dim, false);
-            hogehoge = 0;
-            root->dump_one("");
 
             // Specify the granularity here!!
             int gra;
-            std::cout << "(Phase 0) Specify the compute_at location of " << node->func.name() << " : ";
-            std::cout << "(0 ~ " << tile_options.size() - 1 << ") : ";
-            std::cin >> gra;
-            std::cout << std::endl;
+            if (root->children.size() != 0) {
+                std::cout << "(Phase 0) Specify the compute_at location of " << node->func.name() << " : ";
+                std::cout << "(0 ~ " << tile_options.size() - 1 << ") : ";
+                std::cin >> gra;
+                std::cout << std::endl;
+            } else {
+                gra = 0;
+            }
 
             IntrusivePtr<const LoopNest> ln = tile_options[gra];
             auto child = make_child();
