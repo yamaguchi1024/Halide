@@ -3245,7 +3245,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     if (!seed_str.empty()) {
         seed = atoi(seed_str.c_str());
     }
-    debug(0) << "Dropout seed = " << seed << '\n';
+    //debug(0) << "Dropout seed = " << seed << '\n';
     std::mt19937 rng((uint32_t) seed);
 
     // Get the beam size
@@ -3267,7 +3267,8 @@ std::string generate_schedule(const std::vector<Function> &outputs,
 
     // Analyse the Halide algorithm and construct our abstract representation of it
     FunctionDAG dag(outputs, params, target);
-    dag.dump();
+    // HERE! Probably I can dump dag here.
+    //dag.dump();
 
     // Construct a cost model to use to evaluate states. Currently we
     // just have the one, but it's an abstract interface, so others
@@ -3324,7 +3325,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
 // constructor.
 struct RegisterAutoscheduler {
     RegisterAutoscheduler() {
-        debug(0) << "Registering autoscheduler...\n";
+        //debug(0) << "Registering autoscheduler...\n";
         Pipeline::set_custom_auto_scheduler(*this);
     }
 
