@@ -1226,8 +1226,8 @@ struct LoopNest {
             stream << " t";
         }
         for (auto p : store_at) {
-            if (hogehoge != 0)
-                stream << "\n ";
+            if (hogehoge != 0 || (stream.str().find("realize") != std::string::npos))
+                stream << "\\n  ";
             stream << prefix << "realize: " << p->func.name();
         }
 
@@ -1245,7 +1245,7 @@ struct LoopNest {
         }
 
         for (auto it = inlined.begin(); it != inlined.end(); it++) {
-            stream << prefix << "inlined: " << it.key()->func.name() << " " << it.value() << '\n';
+            stream << prefix << "inlined: " << it.key()->func.name() << " " << it.value() << "\\n";
         }
 
     }
