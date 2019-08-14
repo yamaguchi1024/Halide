@@ -1206,7 +1206,6 @@ struct LoopNest {
     void dump_one(string prefix) const {//, const LoopNest *parent) const {
 
         debug(0) << hogehoge << " ";
-        hogehoge++;
 
         if (!is_root()) {
             debug(0) << prefix << node->func.name();
@@ -1218,21 +1217,7 @@ struct LoopNest {
                 if (innermost && i == (size_t) vectorized_loop_index) {
                     debug(0) << 'v';
                 }
-                // Loops that have a known constant size get a
-                // 'c'. Useful for knowing what we can unroll.
-                //if (parent->get_bounds(node)->loops(stage->index, i).constant_extent()) {
-                //    debug(0) << 'c';
-                //}
             }
-
-            // Uncomment when debugging the representative loop bounds selected.
-            /*
-            const auto &bounds = get_bounds(node);
-            for (size_t i = 0; i < size.size(); i++) {
-                const auto &p = bounds->loops(stage->index, i);
-                debug(0) << " [" << p.first << ", " << p.second << "]";
-            }
-            */
 
             debug(0) << " (" << vectorized_loop_index << ", " << vector_dim << ")";
         }
@@ -1241,8 +1226,12 @@ struct LoopNest {
             debug(0) << " t";
         }
         for (auto p : store_at) {
+            if (hogehoge != 0)
+                debug(0) << "\n ";
             debug(0) << prefix << "realize: " << p->func.name();
         }
+
+        hogehoge++;
         if (innermost) {
             debug(0) << " *\n";
         } else if (parallel) {
@@ -1587,13 +1576,14 @@ struct LoopNest {
 
     // Return all possible ways to compute f in tiles somewhere within
     // this loop nest.
-    vector<IntrusivePtr<const LoopNest>> compute_in_tiles(const FunctionDAG::Node *f,
+    vector<std::pair<IntrusivePtr<const LoopNest>, int>> compute_in_tiles(const FunctionDAG::Node *f,
                                                           const LoopNest *parent,
                                                           const MachineParams &params,
                                                           int v,
-                                                          bool in_realization) const {
+                                                          bool in_realization,
+                                                          int numdeep) const {
         internal_assert(f);
-        vector<IntrusivePtr<const LoopNest>> result;
+        vector<std::pair<IntrusivePtr<const LoopNest>, int>> result;
 
         // Figure out which child we can fuse this into
         int child = -1;
@@ -1608,7 +1598,10 @@ struct LoopNest {
         }
 
         // Place the computation directly inside this loop (provided it's not a SIMD loop)
-        if (!innermost &&
+        // This is compute_root.
+        // Why it cannot be innermost?
+        //if (!innermost &&
+        if (
             (!in_realization ||
              size.empty() ||
              vector_dim == -1 ||
@@ -1622,154 +1615,19 @@ struct LoopNest {
             } else {
                 r->tileable = false;
             }
-            result.emplace_back(r.release());
-        }
-
-        if (f->is_output) {
-            // Outputs must be compute_root, so we're done.
-            return result;
-        }
-
-        if (false) {
-            // Generate a list of tile sizes to try
-            //auto tilings = generate_tilings(size, (int)(size.size() - 1), 2, !in_realization);
-
-            // Phase 0 tiling input here!
-            
-            //int in_x, in_y;
-            //std::cout << "(Phase 0) Specify the tiling \"x y\": ";
-            //std::cin >> in_x >> in_y;
-            std::vector<std::vector<int64_t>> tilings = {{90, 90}};
-
-            if (tilings.size() > 10000) {
-                debug(0) << "Warning: lots of tilings: " << tilings.size() << "\n";
-            }
-
-            for (auto t : tilings) {
-                // Tile this loop and place the computation at some coarser granularity
-                LoopNest *inner = new LoopNest, *outer = new LoopNest;
-                inner->node      = outer->node      = node;
-                inner->stage     = outer->stage     = stage;
-                inner->tileable  = outer->tileable  = tileable && may_subtile();
-                inner->vector_dim = outer->vector_dim = vector_dim;
-                inner->vectorized_loop_index = outer->vectorized_loop_index = vectorized_loop_index;
-                outer->size = size;
-                outer->innermost = false;
-                outer->parallel = parallel;
-                inner->parallel = false;
-
-                // First make an inner loop representing a 1x1x1... tile
-                inner->size.resize(size.size(), 1);
-                inner->innermost = innermost;
-                inner->children = children;
-                inner->inlined = inlined;
-                inner->bounds = bounds;
-                inner->store_at = store_at;
-
-
-                {
-                    auto b = inner->get_bounds(node)->make_copy();
-
-                    // Then move factors from the outer loop to the inner loop
-                    auto parent_bounds = parent->get_bounds(node);
-
-                    for (size_t i = 0; i < t.size(); i++) {
-                        int64_t outer_extent = t[i];
-                        inner->size[i] = (outer->size[i] + outer_extent - 1) / outer_extent;
-                        outer->size[i] = outer_extent;
-                        const auto &p = parent_bounds->loops(stage->index, i);
-                        int64_t min = p.min();
-                        int64_t original_extent = p.extent();
-                        int64_t inner_extent = (original_extent + outer_extent - 1) / outer_extent;
-                        // Pick a more representative loop iteration
-                        min += (outer_extent / 2) * inner_extent;
-                        bool compile_time_constant_extent =
-                            (p.constant_extent() || outer_extent > 1) &&
-                            (inner_extent == 1 || outer_extent == 1 || stage->index == 0);
-                        b->loops(stage->index, i) = Span(min, min + inner_extent - 1, compile_time_constant_extent);
-                    }
-
-                    // Region_{computed/required} on outer is now
-                    // wrong, but it doesn't matter because consumers
-                    // only look at the loops in get_bounds. Still,
-                    // this is weird.
-                    outer->set_bounds(node, b);
-                }
-
-                if (!in_realization) {
-                    outer->store_at.insert(f);
-                }
-                outer->children.emplace_back(inner);
-
-                // HACK
-                // bool may_slide = false;
-                bool may_slide = (!in_realization &&
-                                  f->stages.size() == 1);
-                if (may_slide) {
-                    // Store here, but compute further in. Currently
-                    // don't have to worry about the constraints this
-                    // places on parallelism, as we forced all the
-                    // parallelism to the outer loop.
-                    //std::cout << __LINE__ << std::endl;
-                    auto opts = inner->compute_in_tiles(f, outer, params, v, true);
-                    for (IntrusivePtr<const LoopNest> &n : opts) {
-                        LoopNest *store_at_outer_compute_further_in = new LoopNest;
-                        store_at_outer_compute_further_in->copy_from(*outer);
-                        store_at_outer_compute_further_in->children.pop_back();
-                        store_at_outer_compute_further_in->children.emplace_back(std::move(n));
-                        result.emplace_back(store_at_outer_compute_further_in);
-                    }
-                }
-
-                // Site the computation inside the outer loop
-                outer->compute_here(f, true, v);
-                outer->tileable &= !in_realization;
-                result.emplace_back(outer);
-            }
+            result.emplace_back(std::make_pair(r.release(), numdeep));
         }
 
         if (child >= 0 && !called_by_multiple_children && !in_realization &&
             (may_subtile() || is_root())) {
             // Push the Func further inwards in the loop nest
 
-            // See if it's appropriate to slide over this loop Can't
-            // slide at the root level if we intend to parallelize it.
-            // HACK
-            // bool may_slide = false;
-            bool may_slide = (params.parallelism == 1) || !is_root();
-
-            const auto &c = children[child];
-            int num_ones = 0;
-            for (size_t i = 0; i < c->size.size(); i++) {
-                int64_t s = c->size[i];
-                num_ones += (s == 1) ? 1 : 0;
-            }
-
-            // Some pruning:
-
-            // Only slide over single-dimensional loops
-            may_slide &= num_ones == ((int)c->size.size() - 1);
-
-            // Don't slide funcs with update stages
-            may_slide &= f->stages.size() == 1;
-
-            // Don't slide over the vector dimension
-            may_slide &= (c->vectorized_loop_index == -1 ||
-                          c->size[c->vectorized_loop_index] == 1);
-
             for (int store_here = 0; store_here < 2; store_here++) {
-                if (store_here && !may_slide) {
-                    // We place all our parallel loops at the root
-                    // level, so this would constrain parallelism.
-                    continue;
-                }
-                if (is_root() && num_ones == (int)c->size.size() && params.parallelism > 1) {
-                    // Don't fuse into serial loops, or we could never parallelize this Func.
-                    continue;
-                }
-                //std::cout << __LINE__ << std::endl;
-                auto opts = children[child]->compute_in_tiles(f, this, params, v, store_here);
-                for (IntrusivePtr<const LoopNest> &n : opts) {
+                auto opts = children[child]->compute_in_tiles(f, this, params, v, store_here, ++numdeep);
+
+                for (auto opt : opts) {
+                    IntrusivePtr<const LoopNest> &n = opt.first;
+
                     // (Only valid if one child calls f) Push the
                     // computation into the child. Possibly leaving
                     // the storage out here.
@@ -1779,7 +1637,7 @@ struct LoopNest {
                         r->store_at.insert(f);
                     }
                     r->children[child] = n;
-                    result.emplace_back(r);
+                    result.emplace_back(std::make_pair(r, opt.second));
                 }
             }
         }
@@ -2076,8 +1934,8 @@ struct LoopNest {
                 }
             }
             if (innermost) {
-                internal_assert(store_at.empty());
-                internal_assert(children.empty());
+                //internal_assert(store_at.empty());
+                //internal_assert(children.empty());
                 return;
             }
 
@@ -2462,26 +2320,6 @@ struct State {
                 }
             }
 
-            // Some search-space pruning. If a node is pointwise, and
-            // so are all its inputs and so is its sole output, and
-            // inlining it is legal, just inline it. This saves time
-            // on long chains of pointwise things.
-            bool must_inline = (node->is_pointwise &&
-                                (num_children > 0) &&
-                                (node->outgoing_edges.size() == 1));
-            if (must_inline) {
-                for (const auto *e : node->stages[0].incoming_edges) {
-                    must_inline &= e->producer->is_pointwise;
-                }
-                for (const auto *e : node->outgoing_edges) {
-                    must_inline &= (e->consumer->node->is_pointwise ||
-                                    e->consumer->node->is_boundary_condition);
-                }
-                if (must_inline) {
-                    return;
-                }
-            }
-
             // Construct a list of plausible dimensions to vectorize
             // over. Currently all of them. TODO: Pre-prune the list
             // of sane dimensions to vectorize a Func over to reduce
@@ -2507,7 +2345,7 @@ struct State {
             // 2) Realize it somewhere
             //for (int vector_dim : vector_dims) {
             int vector_dim = vector_dims[0];
-            auto tile_options = root->compute_in_tiles(node, nullptr, params, vector_dim, false);
+            auto tile_options = root->compute_in_tiles(node, nullptr, params, vector_dim, false, 0);
 
             // Specify the granularity here!!
             int gra;
@@ -2520,10 +2358,11 @@ struct State {
                 gra = 0;
             }
 
-            IntrusivePtr<const LoopNest> ln = tile_options[gra];
+            IntrusivePtr<const LoopNest> ln = tile_options[gra].first;
             auto child = make_child();
             child->root = std::move(ln);
             child->num_decisions_made++;
+
             num_children++;
             accept_child(std::move(child));
         } else {
