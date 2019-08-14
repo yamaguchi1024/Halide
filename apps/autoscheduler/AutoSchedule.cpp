@@ -2352,10 +2352,10 @@ struct State {
             // Specify the granularity here!!
             int gra;
             if (root->children.size() != 0) {
-                std::cout << "(Phase 0) Specify the compute_at location of " << node->func.name();
-                std::cout << " (0 ~ " << tile_options.size() - 1 << ") : " << std::endl;;
+                debug(0) << "(Phase 0) Specify the compute_at location of " << node->func.name();
+                debug(0) << " (0 ~ " << tile_options.size() - 1 << ") : ";
                 std::cin >> gra;
-                std::cout << std::endl;
+                debug(0) << "\n";
             } else {
                 gra = 0;
             }
@@ -2400,9 +2400,9 @@ struct State {
 
                 // Tiling specification HERE!
                 int in_x, in_y;
-                std::cout << "Specify the tiling \"x y\" of Func " << node->func.name() << " : ";
+                debug(0) << "Specify the tiling \"x y\" of Func " << node->func.name() << " : ";
                 std::cin >> in_x >> in_y;
-                std::cout << std::endl;
+                debug(0) << "\n";
 
                 std::vector<std::vector<int64_t>> tilings = {{in_x, in_y}};
 
