@@ -1203,51 +1203,51 @@ struct LoopNest {
         return b;
     }
 
-    void dump_one(string prefix) const {//, const LoopNest *parent) const {
+    void dump_one(string prefix, std::stringstream& stream) const {//, const LoopNest *parent) const {
 
-        debug(0) << hogehoge << " ";
+        stream << hogehoge << " ";
 
         if (!is_root()) {
-            debug(0) << prefix << node->func.name();
+            stream << prefix << node->func.name();
             prefix += " ";
 
             for (size_t i = 0; i < size.size(); i++) {
-                debug(0) << " " << size[i];
+                stream << " " << size[i];
                 // The vectorized loop gets a 'v' suffix
                 if (innermost && i == (size_t) vectorized_loop_index) {
-                    debug(0) << 'v';
+                    stream << 'v';
                 }
             }
 
-            debug(0) << " (" << vectorized_loop_index << ", " << vector_dim << ")";
+            stream << " (" << vectorized_loop_index << ", " << vector_dim << ")";
         }
 
         if (tileable) {
-            debug(0) << " t";
+            stream << " t";
         }
         for (auto p : store_at) {
             if (hogehoge != 0)
-                debug(0) << "\n ";
-            debug(0) << prefix << "realize: " << p->func.name();
+                stream << "\n ";
+            stream << prefix << "realize: " << p->func.name();
         }
 
         hogehoge++;
         if (innermost) {
-            debug(0) << " *\n";
+            stream << " *";
         } else if (parallel) {
-            debug(0) << " p\n";
-        } else {
-            debug(0) << '\n';
+            stream << " p";
         }
+        stream << "\\n";
 
         for (size_t i = children.size(); i > 0; i--) {
           // Loop number output here!
-          children[i-1]->dump_one(prefix);
+          children[i-1]->dump_one(prefix, stream);
         }
 
         for (auto it = inlined.begin(); it != inlined.end(); it++) {
-            debug(0) << prefix << "inlined: " << it.key()->func.name() << " " << it.value() << '\n';
+            stream << prefix << "inlined: " << it.key()->func.name() << " " << it.value() << '\n';
         }
+
     }
 
     // Recursively print a loop nest representation to stderr
@@ -2298,9 +2298,13 @@ struct State {
 
         // Dump the current schedule HERE!
         hogehoge = 0;
-        if (root->children.size() != 0)
-            root->dump_one("");
-        debug(0) << "\n";
+        if (root->children.size() != 0) {
+            std::stringstream stream;
+            stream << "{\"type\": \"schedule\", \"contents\": \"";
+            root->dump_one("", stream);
+            stream << "\"}";
+            std::cout << stream.str() << std::endl;
+        }
 
         if (phase == 0) {
             // Injecting realizations
@@ -2352,10 +2356,14 @@ struct State {
             // Specify the granularity here!!
             int gra;
             if (root->children.size() != 0) {
-                debug(0) << "Specify the compute_at location of " << node->func.name();
-                debug(0) << " (0 ~ " << tile_options.size() - 1 << ") : ";
+                std::stringstream stream;
+                stream << "{\"type\": \"phase0\", \"contents\": \"";
+                stream << "Specify the compute_at location of " << node->func.name();
+                stream << " (0 ~ " << tile_options.size() - 1 << ") : ";
+                stream << "\"}";
+                std::cout << stream.str() << std::endl;
+
                 std::cin >> gra;
-                debug(0) << "\n";
             } else {
                 gra = 0;
             }
@@ -2400,9 +2408,13 @@ struct State {
 
                 // Tiling specification HERE!
                 int in_x, in_y;
-                debug(0) << "Specify the tiling \"x y\" of Func " << node->func.name() << " : ";
+                std::stringstream stream;
+                stream << "{\"type\": \"phase1\", \"contents\": \"";
+                stream << "Specify the tiling (x y) of Func " << node->func.name() << " : ";
+                stream << "\"}";
+                std::cout << stream.str() << std::endl;
+
                 std::cin >> in_x >> in_y;
-                debug(0) << "\n";
 
                 std::vector<std::vector<int64_t>> tilings = {{in_x, in_y}};
 
