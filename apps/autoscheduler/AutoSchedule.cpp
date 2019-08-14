@@ -2305,6 +2305,7 @@ struct State {
         if (phase == 0) {
             // Injecting realizations
             {
+                /*
                 // 1) Inline it
                 if (node->stages.size() == 1 && !node->is_output) {
                     auto child = make_child();
@@ -2318,6 +2319,7 @@ struct State {
                         accept_child(std::move(child));
                     }
                 }
+                */
             }
 
             // Construct a list of plausible dimensions to vectorize
@@ -2398,7 +2400,7 @@ struct State {
 
                 // Tiling specification HERE!
                 int in_x, in_y;
-                std::cout << "Specify the tiling \"x y\": ";
+                std::cout << "Specify the tiling \"x y\" of Func " << node->func.name() << " : ";
                 std::cin >> in_x >> in_y;
                 std::cout << std::endl;
 
