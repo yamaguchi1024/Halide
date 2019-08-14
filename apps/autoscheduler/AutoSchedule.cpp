@@ -1507,7 +1507,7 @@ struct LoopNest {
     IntrusivePtr<const LoopNest> parallelize_in_tiles(const MachineParams &params,
                                                       const vector<int64_t> &tiling,
                                                       const LoopNest *parent) const {
-      /*
+        /*
       std::cout << "parallelize_in_tiles" << std::endl;
       for (int i = 0; i < tiling.size(); i++)
         std::cout << tiling[i] << " ";
@@ -2469,7 +2469,7 @@ struct State {
                         ((o.entire || min_total >= params.parallelism) &&
                          (max_total <= params.parallelism * 16));
 
-                    if (!ok) continue;
+                    //if (!ok) continue;
 
                     options.emplace_back(std::move(o));
                 }
