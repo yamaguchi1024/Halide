@@ -1483,13 +1483,25 @@ struct FunctionDAG {
     }
 
     void dump_simple() const {
-        for (const Node &n : nodes) {
-            debug(0) << "Node: " << n.func.name() << '\n';
+        std::stringstream stream;
+        stream << "{\"type\":\"dag\", \"nodes\": [";
+        //for (const Node &n : nodes) {
+        for (int i = 0; i < nodes.size(); i++) {
+            stream << "\"" << nodes[i].func.name() << "\" ";
+            if (i != nodes.size() - 1)
+                stream << ", ";
         }
-        for (const Edge &e : edges) {
-            debug(0) << "Edge: " << e.producer->func.name() << " -> " << e.consumer->name << '\n';
+        stream << "], \"edges\": [";
+        //for (const Edge &e : edges) {
+        for (int i = 0; i < edges.size(); i++) {
+            stream << "[ \"" << edges[i].producer->func.name() << "\", \"" << edges[i].consumer->name << "\"] ";
+            if (i != edges.size() - 1)
+                stream << ", ";
         }
+        stream << "]}";
+        std::cout << stream.str() << std::endl;
     }
+
     void dump() const {
         for (const Node &n : nodes) {
             debug(0) << "Node: " << n.func.name() << '\n'
