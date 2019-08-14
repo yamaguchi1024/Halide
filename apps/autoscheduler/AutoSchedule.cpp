@@ -3117,7 +3117,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     // Analyse the Halide algorithm and construct our abstract representation of it
     FunctionDAG dag(outputs, params, target);
     // HERE! Probably I can dump dag here.
-    //dag.dump();
+    dag.dump_simple();
 
     // Construct a cost model to use to evaluate states. Currently we
     // just have the one, but it's an abstract interface, so others
