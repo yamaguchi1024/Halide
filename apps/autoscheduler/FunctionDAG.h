@@ -1482,6 +1482,14 @@ struct FunctionDAG {
         }
     }
 
+    void dump_simple() const {
+        for (const Node &n : nodes) {
+            debug(0) << "Node: " << n.func.name() << '\n';
+        }
+        for (const Edge &e : edges) {
+            debug(0) << "Edge: " << e.producer->func.name() << " -> " << e.consumer->name << '\n';
+        }
+    }
     void dump() const {
         for (const Node &n : nodes) {
             debug(0) << "Node: " << n.func.name() << '\n'
