@@ -77,7 +77,6 @@
 #include "AutoSchedule.h"
 #include "../../src/PrintLoopNest.h"
 
-int hogehoge = 0;
 int hugahuga = 0;
 
 namespace Halide {
@@ -1203,51 +1202,53 @@ struct LoopNest {
         return b;
     }
 
-    void dump_one(string prefix, std::stringstream& stream) const {//, const LoopNest *parent) const {
+    void dump_one(std::stringstream& stream) const {//, const LoopNest *parent) const {
 
-        stream << hogehoge << " ";
+        if (!is_root())
+            stream << ",";
+        stream << "[";
 
-        if (!is_root()) {
-            stream << prefix << node->func.name();
-            prefix += " ";
-
-            for (size_t i = 0; i < size.size(); i++) {
-                stream << " " << size[i];
-                // The vectorized loop gets a 'v' suffix
-                if (innermost && i == (size_t) vectorized_loop_index) {
-                    stream << 'v';
-                }
+        if (tileable || innermost || parallel) {
+            stream << "\"(";
+            if (tileable) {
+                stream << "tileable";
+                if (innermost || parallel)
+                    stream << ", ";
             }
 
-            stream << " (" << vectorized_loop_index << ", " << vector_dim << ")";
+            if (innermost) {
+                stream << "innermost";
+            } else if (parallel) {
+                stream << "parallel";
+            }
+            stream << ")\"";
         }
 
-        if (tileable) {
-            stream << " t";
+        if (!is_root()) {
+            for (size_t i = 0; i < size.size(); i++) {
+                if (innermost && i == (size_t) vectorized_loop_index) {
+                    stream << ", \"(vectorized)\"";
+                }
+
+                std::string xy = (i == 0) ? "y" : "x";
+                stream << ", \"for " + node->func.name() + "." + xy + " in 0..";
+                stream << size[i];
+                stream <<  "\"";
+            }
         }
+
         for (auto p : store_at) {
-            if (hogehoge != 0 || (stream.str().find("realize") != std::string::npos))
-                stream << "\\n  ";
-            stream << prefix << "realize: " << p->func.name();
+            if (stream.str().find("realize") != std::string::npos)
+                stream << ",";
+            stream << "\"" << "realize: " << p->func.name() << "\"";
         }
 
-        hogehoge++;
-        if (innermost) {
-            stream << " *";
-        } else if (parallel) {
-            stream << " p";
-        }
-        stream << "\\n";
+        stream << "]";
 
         for (size_t i = children.size(); i > 0; i--) {
           // Loop number output here!
-          children[i-1]->dump_one(prefix, stream);
+          children[i-1]->dump_one(stream);
         }
-
-        for (auto it = inlined.begin(); it != inlined.end(); it++) {
-            stream << prefix << "inlined: " << it.key()->func.name() << " " << it.value() << "\\n";
-        }
-
     }
 
     // Recursively print a loop nest representation to stderr
@@ -1298,8 +1299,6 @@ struct LoopNest {
 
         for (size_t i = children.size(); i > 0; i--) {
           // Loop number output here!
-          // std::cout << hogehoge << std::endl;
-          hogehoge++;
           children[i-1]->dump(prefix, this);
         }
 
@@ -2297,12 +2296,11 @@ struct State {
         int num_children = 0;
 
         // Dump the current schedule HERE!
-        hogehoge = 0;
         if (root->children.size() != 0) {
             std::stringstream stream;
-            stream << "{\"type\": \"schedule\", \"contents\": \"";
-            root->dump_one("", stream);
-            stream << "\"}";
+            stream << "{\"type\": \"schedule\", \"contents\": [";
+            root->dump_one(stream);
+            stream << "]}";
             std::cout << stream.str() << std::endl;
         }
 
