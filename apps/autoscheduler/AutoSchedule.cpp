@@ -3079,6 +3079,10 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
     for (int i = 0; i < num_passes; i++) {
         auto pass = optimal_schedule_pass(dag, outputs, params, cost_model, rng, beam_size, i, num_passes, permitted_hashes);
 
+        std::stringstream stream;
+        stream << "{\"type\": \"meta\", \"contents\": \"Done! :)\"}";
+        std::cout << stream.str() << std::endl;
+
         debug(0) << "\nPass " << i << " result:\n";
         pass->dump();
 
