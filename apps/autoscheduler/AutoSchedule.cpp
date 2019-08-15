@@ -1202,14 +1202,16 @@ struct LoopNest {
         return b;
     }
 
-    void dump_one(std::stringstream& stream) const {//, const LoopNest *parent) const {
+    void dump_one(string prefix, std::stringstream& stream) const {//, const LoopNest *parent) const {
 
-        if (!is_root())
+        if (!is_root()) {
             stream << ",";
+            prefix += "&nbsp;&nbsp;&nbsp;&nbsp;";
+        }
         stream << "[";
 
         if (tileable || innermost || parallel) {
-            stream << "\"(";
+            stream << "\"" + prefix + "(";
             if (tileable) {
                 stream << "tileable";
                 if (innermost || parallel)
@@ -1227,11 +1229,11 @@ struct LoopNest {
         if (!is_root()) {
             for (size_t i = 0; i < size.size(); i++) {
                 if (innermost && i == (size_t) vectorized_loop_index) {
-                    stream << ", \"(vectorized)\"";
+                    stream << ", \"" + prefix + "(vectorized)\"";
                 }
 
                 std::string xy = (i == 0) ? "y" : "x";
-                stream << ", \"for " + node->func.name() + "." + xy + " in 0..";
+                stream << ", \"" + prefix + "for " + node->func.name() + "." + xy + " in 0..";
                 stream << size[i];
                 stream <<  "\"";
             }
@@ -1240,14 +1242,14 @@ struct LoopNest {
         for (auto p : store_at) {
             if (stream.str().find("realize") != std::string::npos)
                 stream << ",";
-            stream << "\"" << "realize: " << p->func.name() << "\"";
+            stream << "\"" << prefix << "realize: " << p->func.name() << "\"";
         }
 
         stream << "]";
 
         for (size_t i = children.size(); i > 0; i--) {
           // Loop number output here!
-          children[i-1]->dump_one(stream);
+          children[i-1]->dump_one(prefix, stream);
         }
     }
 
@@ -2299,7 +2301,7 @@ struct State {
         if (root->children.size() != 0) {
             std::stringstream stream;
             stream << "{\"type\": \"schedule\", \"contents\": [";
-            root->dump_one(stream);
+            root->dump_one("", stream);
             stream << "]}";
             std::cout << stream.str() << std::endl;
         }
