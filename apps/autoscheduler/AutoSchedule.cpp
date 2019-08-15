@@ -2360,7 +2360,7 @@ struct State {
                 stream << "{\"type\": \"phase0\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
                 stream << " \"contents\": \"";
-                stream << "Specify the compute_at location of " << node->func.name();
+                stream << "Specify the compute_at location of <font color=\'lime\'> Func " << node->func.name() << "</font>";
                 stream << " (0 ~ " << tile_options.size() - 1 << ") : ";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
@@ -2414,7 +2414,7 @@ struct State {
                 stream << "{\"type\": \"phase1\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
                 stream << " \"contents\": \"";
-                stream << "Specify the tiling (x y) of Func " << node->func.name() << " : ";
+                stream << "Specify the tiling (x y) of <font color=\'lime\'> Func " << node->func.name() << "</font> : ";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
 
