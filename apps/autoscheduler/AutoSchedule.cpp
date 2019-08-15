@@ -3035,6 +3035,14 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             auto selected = q[selection];
             */
             auto selected = q[0];
+            selected->calculate_cost(dag, params, cost_model, true);
+            cost_model->evaluate_costs();
+
+            std::stringstream stream;
+            stream << "{\"type\": \"cost\", \"contents\": ";
+            stream << "\"Current Cost: " << selected->cost << "\"}";
+            std::cout << stream.str() << std::endl;
+
             //selected->root->node->func.print_loop_nest();
 //            std::cout << Halide::Internal::print_loop_nest(outputs) << std::endl;
             //std::cout << Halide::Internal::print_loop_nest({selected->root->node->func}) << std::endl;
