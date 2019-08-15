@@ -3103,7 +3103,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
                               const Target &target,
                               const MachineParams &params) {
     // Start a timer
-    HALIDE_TIC;
+    //HALIDE_TIC;
 
     State::cost_calculations = 0;
 
@@ -3150,7 +3150,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     // Run beam search
     optimal = optimal_schedule(dag, outputs, params, cost_model.get(), rng, beam_size);
 
-    HALIDE_TOC;
+    //HALIDE_TOC;
 
     //debug(0) << "Cost evaluated this many times: " << State::cost_calculations << '\n';
 
