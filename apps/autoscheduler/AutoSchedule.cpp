@@ -2357,7 +2357,9 @@ struct State {
             int gra;
             if (root->children.size() != 0) {
                 std::stringstream stream;
-                stream << "{\"type\": \"phase0\", \"contents\": \"";
+                stream << "{\"type\": \"phase0\", ";
+                stream << "\"func\": \"" << node->func.name() << "\",";
+                stream << " \"contents\": \"";
                 stream << "Specify the compute_at location of " << node->func.name();
                 stream << " (0 ~ " << tile_options.size() - 1 << ") : ";
                 stream << "\"}";
@@ -2409,7 +2411,9 @@ struct State {
                 // Tiling specification HERE!
                 int in_x, in_y;
                 std::stringstream stream;
-                stream << "{\"type\": \"phase1\", \"contents\": \"";
+                stream << "{\"type\": \"phase1\", ";
+                stream << "\"func\": \"" << node->func.name() << "\",";
+                stream << " \"contents\": \"";
                 stream << "Specify the tiling (x y) of Func " << node->func.name() << " : ";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
