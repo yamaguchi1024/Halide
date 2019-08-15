@@ -3083,9 +3083,6 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
         stream << "{\"type\": \"meta\", \"contents\": \"Done! :)\"}";
         std::cout << stream.str() << std::endl;
 
-        debug(0) << "\nPass " << i << " result:\n";
-        pass->dump();
-
         if (i == 0 || pass->cost < best->cost) {
             // Track which pass produced the lowest-cost state. It's
             // not necessarily the final one.
@@ -3093,7 +3090,10 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
         }
     }
 
-    debug(0) << "Best cost: " << best->cost << "\n";
+    std::stringstream stream;
+    stream << "{\"type\": \"cost\", \"contents\": ";
+    stream << "\"Final Cost: " << best->cost << "\"}";
+    std::cout << stream.str() << std::endl;
 
     return best;
 }
@@ -3152,10 +3152,10 @@ std::string generate_schedule(const std::vector<Function> &outputs,
 
     HALIDE_TOC;
 
-    debug(0) << "Cost evaluated this many times: " << State::cost_calculations << '\n';
+    //debug(0) << "Cost evaluated this many times: " << State::cost_calculations << '\n';
 
     // Dump the schedule found
-    debug(0) << "** Optimal schedule:\n";
+    //debug(0) << "** Optimal schedule:\n";
 
     // Just to get the debugging prints to fire
     optimal->calculate_cost(dag, params, cost_model.get(), true);
@@ -3165,7 +3165,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     optimal->apply_schedule(dag, params);
 
     // Print out the schedule
-    optimal->dump();
+    //optimal->dump();
 
     string schedule_file = get_env_variable("HL_SCHEDULE_FILE");
     if (!schedule_file.empty()) {
