@@ -56,6 +56,7 @@
   TODO: expose these settings by adding some means to pass args to
   generator plugins instead of environment vars.
 */
+#include <ctime>
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -2821,7 +2822,8 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                           int beam_size,
                                           int pass_idx,
                                           int num_passes,
-                                          std::unordered_set<uint64_t> &permitted_hashes) {
+                                          std::unordered_set<uint64_t> &permitted_hashes,
+                                          Pipeline &p) {
 
   //std::cout << "beam size: " << beam_size << std::endl;
   //std::cout << "num passes: " << num_passes << std::endl;
@@ -2906,7 +2908,8 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                              beam_size * 2,
                                              pass_idx,
                                              num_passes,
-                                             permitted_hashes);
+                                             permitted_hashes,
+                                             p);
             } else {
                 internal_error << "Ran out of legal states with beam size " << beam_size << "\n";
             }
@@ -3038,16 +3041,30 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             selected->calculate_cost(dag, params, cost_model, true);
             cost_model->evaluate_costs();
 
-            std::stringstream stream;
-            stream << "{\"type\": \"cost\", \"contents\": ";
-            stream << "\"Current Cost: " << selected->cost << "\"}";
-            std::cout << stream.str() << std::endl;
-
             //selected->root->node->func.print_loop_nest();
 //            std::cout << Halide::Internal::print_loop_nest(outputs) << std::endl;
             //std::cout << Halide::Internal::print_loop_nest({selected->root->node->func}) << std::endl;
 
-            //selected->apply_schedule(dag, params);
+            /*
+            print time here
+            IntrusivePtr<State> temp = selected->make_clone();
+            temp->apply_schedule(dag, params);
+            const clock_t begin = clock();
+            if (i > 2)
+                p.realize(1000, 1000);
+            float time =  float(clock() - begin) / CLOCKS_PER_SEC;
+                */
+
+
+            std::stringstream stream;
+            stream << "{\"type\": \"cost\", \"contents\": ";
+            stream << "\"Current Cost: " << selected->cost << "\"}";
+
+            //stream << "{\"type\": \"realize\", \"contents\": ";
+            //stream << "\"Run Time: " << time << "\"}";
+
+            std::cout << stream.str() << std::endl;
+
             //selected->dump();
             q.clear();
             // 最後にはqにひとつだけ入っているようにする
@@ -3062,7 +3079,8 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
                                      const MachineParams &params,
                                      CostModel *cost_model,
                                      std::mt19937 &rng,
-                                     int beam_size) {
+                                     int beam_size,
+                                     Pipeline &p) {
 
     IntrusivePtr<State> best;
 
@@ -3085,7 +3103,7 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
     }
 
     for (int i = 0; i < num_passes; i++) {
-        auto pass = optimal_schedule_pass(dag, outputs, params, cost_model, rng, beam_size, i, num_passes, permitted_hashes);
+        auto pass = optimal_schedule_pass(dag, outputs, params, cost_model, rng, beam_size, i, num_passes, permitted_hashes, p);
 
         std::stringstream stream;
         stream << "{\"type\": \"meta\", \"contents\": \"Done! :)\"}";
@@ -3109,7 +3127,8 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
 // The main entrypoint to generate a schedule for a pipeline.
 std::string generate_schedule(const std::vector<Function> &outputs,
                               const Target &target,
-                              const MachineParams &params) {
+                              const MachineParams &params,
+                              Pipeline &p) {
     // Start a timer
     //HALIDE_TIC;
 
@@ -3156,7 +3175,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     IntrusivePtr<State> optimal;
 
     // Run beam search
-    optimal = optimal_schedule(dag, outputs, params, cost_model.get(), rng, beam_size);
+    optimal = optimal_schedule(dag, outputs, params, cost_model.get(), rng, beam_size, p);
 
     //HALIDE_TOC;
 
@@ -3171,6 +3190,15 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     // Apply the schedules to the pipeline
     // memo: make Halide schedule here
     optimal->apply_schedule(dag, params);
+
+    const clock_t begin = clock();
+    p.realize(1000, 1000);
+    float time =  float(clock() - begin) / CLOCKS_PER_SEC;
+
+    std::stringstream stream;
+    stream << "{\"type\": \"realize\", \"contents\": ";
+    stream << "\"Run Time: " << time << "\"}";
+    std::cout << stream.str() << std::endl;
 
     // Print out the schedule
     //optimal->dump();
@@ -3211,21 +3239,24 @@ struct RegisterAutoscheduler {
         for (Func f : p.outputs()) {
             outputs.push_back(f.function());
         }
-        return Autoscheduler::generate_schedule(outputs, target, params);
+
+        return Autoscheduler::generate_schedule(outputs, target, params, p);
     }
 } register_auto_scheduler;
 
 
+/*
 // An alternative entrypoint for other uses
 void find_and_apply_schedule(FunctionDAG& dag,
                              const std::vector<Function> &outputs,
                              const MachineParams &params,
                              CostModel* cost_model,
                              int beam_size,
-                             StageMap<ScheduleFeatures>* schedule_features) {
+                             StageMap<ScheduleFeatures>* schedule_features,
+                             Pipeline &p) {
 
     std::mt19937 rng(12345);
-    IntrusivePtr<State> optimal = optimal_schedule(dag, outputs, params, cost_model, rng, beam_size);
+    IntrusivePtr<State> optimal = optimal_schedule(dag, outputs, params, cost_model, rng, beam_size, p);
 
     // Apply the schedules
     optimal->apply_schedule(dag, params);
@@ -3234,6 +3265,7 @@ void find_and_apply_schedule(FunctionDAG& dag,
         optimal->compute_featurization(dag, params, schedule_features);
     }
 }
+*/
 
 }
 
