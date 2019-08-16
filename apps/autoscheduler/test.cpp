@@ -1,6 +1,7 @@
 #include "Halide.h"
 
 #include <dlfcn.h>
+//#include <Halide/tools/schedule_yourself.h>
 
 using namespace Halide;
 
@@ -34,6 +35,16 @@ int main(int argc, char **argv) {
         h.estimate(x, 0, 1000).estimate(y, 0, 1000);
 
         Pipeline(h).auto_schedule(target, params);
+        //Pipeline(h).schedule_yourself(target, params);
+        //schedule_yourself(Pipeline(h), target, params);
+
+        /*
+        h.realize(400, 400);
+        h.realize(400, 400);
+        h.realize(400, 400);
+        h.realize(400, 400);
+        h.realize(400, 400);
+        */
     }
 
     return 0;
