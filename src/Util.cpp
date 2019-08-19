@@ -117,11 +117,6 @@ int unique_count(size_t h) {
 }
 }  // namespace
 
-void reset_unique_name_counters() {
-    for (int i = 0; i < num_unique_name_counters; ++i)
-        unique_name_counters[i].store(0);
-}
-
 // There are three possible families of names returned by the methods below:
 // 1) char pattern: (char that isn't '$') + number (e.g. v234)
 // 2) string pattern: (string without '$') + '$' + number (e.g. fr#nk82$42)
@@ -490,11 +485,11 @@ void halide_toc_impl(const char *file, int line) {
     std::chrono::duration<double> diff = t2 - t1.time;
     tick_stack.pop_back();
     for (size_t i = 0; i < tick_stack.size(); i++) {
-        debug(0) << "  ";
+        debug(1) << "  ";
     }
     string f = file;
     f = split_string(f, "/").back();
-    debug(0) << t1.file << ":" << t1.line << " ... " << f << ":" << line << " : " << diff.count() * 1000 << " ms\n";
+    debug(1) << t1.file << ":" << t1.line << " ... " << f << ":" << line << " : " << diff.count() * 1000 << " ms\n";
 }
 
 }  // namespace Internal

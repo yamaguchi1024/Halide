@@ -55,7 +55,7 @@ WASM_SHELL ?= d8
 PREFIX ?= /usr/local
 LLVM_CONFIG ?= llvm-config
 LLVM_COMPONENTS= $(shell $(LLVM_CONFIG) --components)
-LLVM_VERSION = $(shell $(LLVM_CONFIG) --version | cut -b 1-3)
+LLVM_VERSION = $(shell $(LLVM_CONFIG) --version | sed 's/\([0-9][0-9]*\)\.\([0-9]\).*/\1.\2/')
 
 LLVM_FULL_VERSION = $(shell $(LLVM_CONFIG) --version)
 LLVM_BINDIR = $(shell $(LLVM_CONFIG) --bindir | sed -e 's/\\/\//g' -e 's/\([a-zA-Z]\):/\/\1/g')
@@ -99,7 +99,7 @@ endif
 
 COMMON_LD_FLAGS += $(SANITIZER_FLAGS)
 
-LLVM_VERSION_TIMES_10 = $(shell $(LLVM_CONFIG) --version | cut -b 1,3)
+LLVM_VERSION_TIMES_10 = $(shell $(LLVM_CONFIG) --version | sed 's/\([0-9][0-9]*\)\.\([0-9]\).*/\1\2/')
 
 LLVM_CXX_FLAGS += -DLLVM_VERSION=$(LLVM_VERSION_TIMES_10)
 
@@ -774,11 +774,11 @@ RUNTIME_CPP_COMPONENTS = \
   aarch64_cpu_features \
   alignment_128 \
   alignment_32 \
+  allocation_cache \
   alignment_64 \
   android_clock \
   android_host_cpu_count \
   android_io \
-  android_opengl_context \
   arm_cpu_features \
   buffer_t \
   cache \
@@ -803,7 +803,6 @@ RUNTIME_CPP_COMPONENTS = \
   ios_io \
   linux_clock \
   linux_host_cpu_count \
-  linux_opengl_context \
   linux_yield \
   matlab \
   metadata \
@@ -820,6 +819,8 @@ RUNTIME_CPP_COMPONENTS = \
   opencl \
   opengl \
   openglcompute \
+  opengl_egl_context \
+  opengl_glx_context \
   osx_clock \
   osx_get_symbol \
   osx_host_cpu_count \
@@ -1933,6 +1934,12 @@ TEST_APPS=\
 	stencil_chain \
 	wavelet
 
+# TODO: apps/autoscheduler doesn't yet build properly for MinGW
+# (see https://github.com/halide/Halide/issues/4069)
+ifneq ($(OS), Windows_NT)
+	TEST_APPS += autoscheduler
+endif
+
 .PHONY: test_apps
 test_apps: distrib
 	@for APP in $(TEST_APPS); do \
@@ -1952,22 +1959,22 @@ BENCHMARK_APPS=\
 	nl_means \
 	stencil_chain
 
+$(BENCHMARK_APPS): distrib
+	$(eval SUFFIX=$(if $(findstring wasm-32-wasmrt,$(HL_TARGET)),_wasm,))
+	@echo Building $@ for ${HL_TARGET}...
+	@$(MAKE) -C $(ROOT_DIR)/apps/$@ \
+		$(CURDIR)/$(BIN_DIR)/apps/$@/bin/$(HL_TARGET)/$@.rungen${SUFFIX} \
+		HALIDE_DISTRIB_PATH=$(CURDIR)/$(DISTRIB_DIR) \
+		BIN_DIR=$(CURDIR)/$(BIN_DIR)/apps/$@/bin \
+		HL_TARGET=$(HL_TARGET) \
+		> /dev/null \
+		|| exit 1
+
 # TODO: we deliberately leave out the `|| exit 1` (for now) when *running*
 # the benchmarks, as some will currently crash at runtime when running in
 # wasm + wasm_simd128 due to a known bug in V8 v7.5
-.PHONY: benchmark_apps
-benchmark_apps: distrib
-	$(eval SUFFIX=$(if $(findstring wasm-32-wasmrt,$(HL_TARGET)),_wasm,))
-	@for APP in $(BENCHMARK_APPS); do \
-		echo Building $${APP} for ${HL_TARGET}... ; \
-		$(MAKE) -C $(ROOT_DIR)/apps/$${APP} \
-		    $(CURDIR)/$(BIN_DIR)/apps/$${APP}/bin/$(HL_TARGET)/$${APP}.rungen${SUFFIX} \
-			HALIDE_DISTRIB_PATH=$(CURDIR)/$(DISTRIB_DIR) \
-			BIN_DIR=$(CURDIR)/$(BIN_DIR)/apps/$${APP}/bin \
-			HL_TARGET=$(HL_TARGET) \
-			> /dev/null \
-			|| exit 1 ; \
-	done
+.PHONY: benchmark_apps $(BENCHMARK_APPS)
+benchmark_apps: $(BENCHMARK_APPS)
 	@for APP in $(BENCHMARK_APPS); do \
 		echo ;\
 		echo Benchmarking $${APP} for ${HL_TARGET}... ; \
@@ -2036,6 +2043,10 @@ ifneq (,$(findstring clang version 9.0,$(CLANG_VERSION)))
 CLANG_OK=yes
 endif
 
+ifneq (,$(findstring clang version 10.0,$(CLANG_VERSION)))
+CLANG_OK=yes
+endif
+
 ifneq (,$(findstring Apple LLVM version 5.0,$(CLANG_VERSION)))
 CLANG_OK=yes
 endif
@@ -2056,7 +2067,7 @@ $(BUILD_DIR)/clang_ok:
 	@exit 1
 endif
 
-ifneq (,$(findstring $(LLVM_VERSION_TIMES_10), 70 71 80 90))
+ifneq (,$(findstring $(LLVM_VERSION_TIMES_10), 70 71 80 90 100))
 LLVM_OK=yes
 endif
 
