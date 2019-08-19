@@ -69,7 +69,7 @@
 #include <unordered_set>
 
 #include "Halide.h"
-#include "CostModel.h"
+#include "DefaultCostModel.h"
 #include "Featurization.h"
 #include "FunctionDAG.h"
 #include "PerfectHashMap.h"
@@ -2115,36 +2115,6 @@ struct State {
         }
     }
 
-    void save_featurization(const FunctionDAG &dag, const MachineParams &params, const std::string &feature_file) {
-        StageMap<ScheduleFeatures> features;
-        compute_featurization(dag, params, &features);
-
-        std::ofstream binfile(feature_file, std::ios::binary | std::ios_base::trunc);
-        for (const auto &n : dag.nodes) {
-            if (n.is_input) continue;
-            for (size_t stage_idx = n.stages.size(); stage_idx > 0; stage_idx--) {
-                const auto &s = n.stages[stage_idx - 1];
-                const size_t num_schedule_features = ScheduleFeatures::num_features();
-                const size_t num_pipeline_features = PipelineFeatures::num_features();
-                const auto &sched_feat = features.get(&s);
-
-                float buf[num_schedule_features + num_pipeline_features];
-                // Save them as floats
-                for (size_t i = 0; i < num_schedule_features; i++) {
-                    buf[i] = sched_feat[i];
-                }
-
-                for (size_t i = 0; i < num_pipeline_features; i++) {
-                    buf[i + num_schedule_features] = s.features[i];
-                }
-
-                binfile.write((const char *)buf, sizeof(buf));
-            }
-        }
-        binfile.close();
-        internal_assert(!binfile.fail()) << "Failed to write " << feature_file;
-    }
-
     bool calculate_cost(const FunctionDAG &dag, const MachineParams &params, CostModel *cost_model, bool verbose = false) {
         StageMap<ScheduleFeatures> features;
         compute_featurization(dag, params, &features);
@@ -3125,10 +3095,11 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
 }
 
 // The main entrypoint to generate a schedule for a pipeline.
-std::string generate_schedule(const std::vector<Function> &outputs,
+void generate_schedule(const std::vector<Function> &outputs,
                               const Target &target,
                               const MachineParams &params,
-                              Pipeline &p) {
+                              Pipeline &p,
+                              AutoSchedulerResults *auto_scheduler_results) {
     // Start a timer
     //HALIDE_TIC;
 
@@ -3170,7 +3141,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     // just have the one, but it's an abstract interface, so others
     // can be slotted in for experimentation.
     std::unique_ptr<CostModel> cost_model;
-    cost_model = CostModel::make_default(weights_in_dir, weights_out_dir, randomize_weights);
+    cost_model = make_default_cost_model(weights_in_dir, weights_out_dir, randomize_weights);
 
     IntrusivePtr<State> optimal;
 
@@ -3214,15 +3185,15 @@ std::string generate_schedule(const std::vector<Function> &outputs,
         internal_assert(!f.fail()) << "Failed to write " << schedule_file;
     }
 
-    // Save the featurization, so that we can use this schedule as
-    // training data (once we've benchmarked it).
-    string feature_file = get_env_variable("HL_FEATURE_FILE");
-    if (!feature_file.empty()) {
-        optimal->save_featurization(dag, params, feature_file);
+    if (auto_scheduler_results) {
+        auto_scheduler_results->scheduler_name = "apps/scheduling-tool/SchedulingTool";  // TODO: find a better name (https://github.com/halide/Halide/issues/4057)
+        auto_scheduler_results->schedule_source = optimal->schedule_source;
+        {
+            std::ostringstream out;
+            auto_scheduler_results->featurization.resize(out.str().size());
+            memcpy(auto_scheduler_results->featurization.data(), out.str().data(), out.str().size());
+        }
     }
-
-    // Return the schedule as a valid Halide source.
-    return optimal->schedule_source;
 }
 
 // Halide uses a plugin architecture for registering custom
@@ -3234,13 +3205,13 @@ struct RegisterAutoscheduler {
         Pipeline::set_custom_auto_scheduler(*this);
     }
 
-    string operator()(Pipeline p, const Target &target, const MachineParams &params) {
+    void operator()(Pipeline p, const Target &target, const MachineParams &params, AutoSchedulerResults *results) {
         std::vector<Function> outputs;
         for (Func f : p.outputs()) {
             outputs.push_back(f.function());
         }
 
-        return Autoscheduler::generate_schedule(outputs, target, params, p);
+        Autoscheduler::generate_schedule(outputs, target, params, p, results);
     }
 } register_auto_scheduler;
 
