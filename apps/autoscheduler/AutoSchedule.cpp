@@ -56,7 +56,6 @@
   TODO: expose these settings by adding some means to pass args to
   generator plugins instead of environment vars.
 */
-#include <ctime>
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -76,9 +75,6 @@
 #include "Errors.h"
 #include "NetworkSize.h"
 #include "AutoSchedule.h"
-#include "../../src/PrintLoopNest.h"
-
-int hugahuga = 0;
 
 namespace Halide {
 namespace Internal {
@@ -1203,60 +1199,8 @@ struct LoopNest {
         return b;
     }
 
-    void dump_one(string prefix, std::stringstream& stream) const {//, const LoopNest *parent) const {
-
-        if (!is_root()) {
-            stream << ",";
-            prefix += "&nbsp;&nbsp;&nbsp;&nbsp;";
-        }
-        stream << "[";
-
-        if (tileable || innermost || parallel) {
-            stream << "\"" + prefix + "(";
-            if (tileable) {
-                stream << "tileable";
-                if (innermost || parallel)
-                    stream << ", ";
-            }
-
-            if (innermost) {
-                stream << "innermost";
-            } else if (parallel) {
-                stream << "parallel";
-            }
-            stream << ")\"";
-        }
-
-        if (!is_root()) {
-            for (size_t i = 0; i < size.size(); i++) {
-                if (innermost && i == (size_t) vectorized_loop_index) {
-                    stream << ", \"" + prefix + "(vectorized)\"";
-                }
-
-                std::string xy = (i == 0) ? "y" : "x";
-                stream << ", \"" + prefix + "for " + node->func.name() + "." + xy + " in 0..";
-                stream << size[i];
-                stream <<  "\"";
-            }
-        }
-
-        for (auto p : store_at) {
-            if (stream.str().find("realize") != std::string::npos)
-                stream << ",";
-            stream << "\"" << prefix << "realize: " << p->func.name() << "\"";
-        }
-
-        stream << "]";
-
-        for (size_t i = children.size(); i > 0; i--) {
-          // Loop number output here!
-          children[i-1]->dump_one(prefix, stream);
-        }
-    }
-
     // Recursively print a loop nest representation to stderr
     void dump(string prefix, const LoopNest *parent) const {
-
         if (!is_root()) {
             debug(0) << prefix << node->func.name();
             prefix += " ";
@@ -1299,12 +1243,9 @@ struct LoopNest {
         for (auto p : store_at) {
             debug(0) << prefix << "realize: " << p->func.name() << '\n';
         }
-
         for (size_t i = children.size(); i > 0; i--) {
-          // Loop number output here!
-          children[i-1]->dump(prefix, this);
+            children[i-1]->dump(prefix, this);
         }
-
         for (auto it = inlined.begin(); it != inlined.end(); it++) {
             debug(0) << prefix << "inlined: " << it.key()->func.name() << " " << it.value() << '\n';
         }
@@ -1509,12 +1450,6 @@ struct LoopNest {
     IntrusivePtr<const LoopNest> parallelize_in_tiles(const MachineParams &params,
                                                       const vector<int64_t> &tiling,
                                                       const LoopNest *parent) const {
-        /*
-      std::cout << "parallelize_in_tiles" << std::endl;
-      for (int i = 0; i < tiling.size(); i++)
-        std::cout << tiling[i] << " ";
-      std::cout << std::endl;
-      */
 
         // Split this loop and move factors to the inner loop
         LoopNest *inner = new LoopNest, *outer = new LoopNest;
@@ -1578,14 +1513,40 @@ struct LoopNest {
 
     // Return all possible ways to compute f in tiles somewhere within
     // this loop nest.
-    vector<std::pair<IntrusivePtr<const LoopNest>, int>> compute_in_tiles(const FunctionDAG::Node *f,
+    vector<IntrusivePtr<const LoopNest>> compute_in_tiles(const FunctionDAG::Node *f,
                                                           const LoopNest *parent,
                                                           const MachineParams &params,
                                                           int v,
-                                                          bool in_realization,
-                                                          int numdeep) const {
+                                                          bool in_realization) const {
         internal_assert(f);
-        vector<std::pair<IntrusivePtr<const LoopNest>, int>> result;
+
+        vector<IntrusivePtr<const LoopNest>> result;
+
+        // Some pruning to not waste time on terrible states
+        if (parent) {
+            const auto &bounds_here = get_bounds(f);
+            const auto &bounds_at_parent = parent->get_bounds(f);
+
+            // Don't descend into loops that break our ability to
+            // vectorize if we could have vectorized one level up.
+            const auto &p = bounds_here->region_computed(v);
+            const auto &p_parent = bounds_at_parent->region_computed(v);
+            int64_t e = p.extent();
+            int64_t ep = p_parent.extent();
+            if (ep >= f->vector_size && e < f->vector_size) return result;
+
+            // Don't descend into loops if the bounds required don't
+            // shrink.
+            int64_t total_here = 1, total_at_parent = 1;
+            for (int i = 0; i < f->dimensions; i++) {
+                const auto &range_here = bounds_here->region_computed(i);
+                const auto &range_at_parent = bounds_at_parent->region_computed(i);
+                total_here *= range_here.extent();
+                total_at_parent *= range_at_parent.extent();
+            }
+            if (total_here >= total_at_parent) return result;
+
+        }
 
         // Figure out which child we can fuse this into
         int child = -1;
@@ -1600,10 +1561,7 @@ struct LoopNest {
         }
 
         // Place the computation directly inside this loop (provided it's not a SIMD loop)
-        // This is compute_root.
-        // Why it cannot be innermost?
-        //if (!innermost &&
-        if (
+        if (!innermost &&
             (!in_realization ||
              size.empty() ||
              vector_dim == -1 ||
@@ -1617,19 +1575,166 @@ struct LoopNest {
             } else {
                 r->tileable = false;
             }
-            result.emplace_back(std::make_pair(r.release(), numdeep));
+            result.emplace_back(r.release());
+        }
+
+        if (f->is_output) {
+            // Outputs must be compute_root, so we're done.
+            return result;
+        }
+
+        if (tileable) {
+            // Generate a list of tile sizes to try
+            auto tilings = generate_tilings(size, (int)(size.size() - 1), 2, !in_realization);
+
+            if (tilings.size() > 10000) {
+                debug(0) << "Warning: lots of tilings: " << tilings.size() << "\n";
+            }
+
+            for (auto t : tilings) {
+                if (parallel) {
+                    const auto &l = stage->loop;
+                    // More pruning. Skip root-level tilings that
+                    // would leave too many cores idle, and root-level
+                    // tilings that would force serialization of
+                    // dimensions we have decided to parallelize over
+                    // in an earlier pass.
+                    int total = 1;
+                    size_t idx = 0;
+                    for (auto s : t) {
+                        if (l[idx].pure) {
+                            total *= s;
+                        }
+                        idx++;
+                    }
+
+                    const double tasks_per_core = (double)total / params.parallelism;
+                    const double idle_cores = std::ceil(tasks_per_core) / tasks_per_core;
+                    if (idle_cores > 1.1) continue;
+                }
+
+                // Tile this loop and place the computation at some coarser granularity
+                LoopNest *inner = new LoopNest, *outer = new LoopNest;
+                inner->node      = outer->node      = node;
+                inner->stage     = outer->stage     = stage;
+                inner->tileable  = outer->tileable  = tileable && may_subtile();
+                inner->vector_dim = outer->vector_dim = vector_dim;
+                inner->vectorized_loop_index = outer->vectorized_loop_index = vectorized_loop_index;
+                outer->size = size;
+                outer->innermost = false;
+                outer->parallel = parallel;
+                inner->parallel = false;
+
+                // First make an inner loop representing a 1x1x1... tile
+                inner->size.resize(size.size(), 1);
+                inner->innermost = innermost;
+                inner->children = children;
+                inner->inlined = inlined;
+                inner->bounds = bounds;
+                inner->store_at = store_at;
+
+
+                {
+                    auto b = inner->get_bounds(node)->make_copy();
+
+                    // Then move factors from the outer loop to the inner loop
+                    auto parent_bounds = parent->get_bounds(node);
+
+                    for (size_t i = 0; i < t.size(); i++) {
+                        int64_t outer_extent = t[i];
+                        inner->size[i] = (outer->size[i] + outer_extent - 1) / outer_extent;
+                        outer->size[i] = outer_extent;
+                        const auto &p = parent_bounds->loops(stage->index, i);
+                        int64_t min = p.min();
+                        int64_t original_extent = p.extent();
+                        int64_t inner_extent = (original_extent + outer_extent - 1) / outer_extent;
+                        // Pick a more representative loop iteration
+                        min += (outer_extent / 2) * inner_extent;
+                        bool compile_time_constant_extent =
+                            (p.constant_extent() || outer_extent > 1) &&
+                            (inner_extent == 1 || outer_extent == 1 || stage->index == 0);
+                        b->loops(stage->index, i) = Span(min, min + inner_extent - 1, compile_time_constant_extent);
+                    }
+
+                    // Region_{computed/required} on outer is now
+                    // wrong, but it doesn't matter because consumers
+                    // only look at the loops in get_bounds. Still,
+                    // this is weird.
+                    outer->set_bounds(node, b);
+                }
+
+                if (!in_realization) {
+                    outer->store_at.insert(f);
+                }
+                outer->children.emplace_back(inner);
+
+                // HACK
+                // bool may_slide = false;
+                bool may_slide = (!in_realization &&
+                                  f->stages.size() == 1);
+                if (may_slide) {
+                    // Store here, but compute further in. Currently
+                    // don't have to worry about the constraints this
+                    // places on parallelism, as we forced all the
+                    // parallelism to the outer loop.
+                    auto opts = inner->compute_in_tiles(f, outer, params, v, true);
+                    for (IntrusivePtr<const LoopNest> &n : opts) {
+                        LoopNest *store_at_outer_compute_further_in = new LoopNest;
+                        store_at_outer_compute_further_in->copy_from(*outer);
+                        store_at_outer_compute_further_in->children.pop_back();
+                        store_at_outer_compute_further_in->children.emplace_back(std::move(n));
+                        result.emplace_back(store_at_outer_compute_further_in);
+                    }
+                }
+
+                // Site the computation inside the outer loop
+                outer->compute_here(f, true, v);
+                outer->tileable &= !in_realization;
+                result.emplace_back(outer);
+            }
         }
 
         if (child >= 0 && !called_by_multiple_children && !in_realization &&
             (may_subtile() || is_root())) {
             // Push the Func further inwards in the loop nest
 
+            // See if it's appropriate to slide over this loop Can't
+            // slide at the root level if we intend to parallelize it.
+            // HACK
+            // bool may_slide = false;
+            bool may_slide = (params.parallelism == 1) || !is_root();
+
+            const auto &c = children[child];
+            int num_ones = 0;
+            for (size_t i = 0; i < c->size.size(); i++) {
+                int64_t s = c->size[i];
+                num_ones += (s == 1) ? 1 : 0;
+            }
+
+            // Some pruning:
+
+            // Only slide over single-dimensional loops
+            may_slide &= num_ones == ((int)c->size.size() - 1);
+
+            // Don't slide funcs with update stages
+            may_slide &= f->stages.size() == 1;
+
+            // Don't slide over the vector dimension
+            may_slide &= (c->vectorized_loop_index == -1 ||
+                          c->size[c->vectorized_loop_index] == 1);
+
             for (int store_here = 0; store_here < 2; store_here++) {
-                auto opts = children[child]->compute_in_tiles(f, this, params, v, store_here, ++numdeep);
-
-                for (auto opt : opts) {
-                    IntrusivePtr<const LoopNest> &n = opt.first;
-
+                if (store_here && !may_slide) {
+                    // We place all our parallel loops at the root
+                    // level, so this would constrain parallelism.
+                    continue;
+                }
+                if (is_root() && num_ones == (int)c->size.size() && params.parallelism > 1) {
+                    // Don't fuse into serial loops, or we could never parallelize this Func.
+                    continue;
+                }
+                auto opts = children[child]->compute_in_tiles(f, this, params, v, store_here);
+                for (IntrusivePtr<const LoopNest> &n : opts) {
                     // (Only valid if one child calls f) Push the
                     // computation into the child. Possibly leaving
                     // the storage out here.
@@ -1639,7 +1744,7 @@ struct LoopNest {
                         r->store_at.insert(f);
                     }
                     r->children[child] = n;
-                    result.emplace_back(std::make_pair(r, opt.second));
+                    result.emplace_back(r);
                 }
             }
         }
@@ -1936,8 +2041,8 @@ struct LoopNest {
                 }
             }
             if (innermost) {
-                //internal_assert(store_at.empty());
-                //internal_assert(children.empty());
+                internal_assert(store_at.empty());
+                internal_assert(children.empty());
                 return;
             }
 
@@ -2155,8 +2260,8 @@ struct State {
             for (auto it = features.begin(); it != features.end(); it++) {
                 auto &stage = *(it.key());
                 const auto &feat = it.value();
-                //debug(0) << "Schedule features for " << stage.stage.name() << "\n";
-                //feat.dump();
+                debug(0) << "Schedule features for " << stage.stage.name() << "\n";
+                feat.dump();
             }
         }
 
@@ -2244,15 +2349,11 @@ struct State {
                            std::function<void(IntrusivePtr<State> &&)> &accept_child) const {
         internal_assert(root.defined() && root->is_root());
 
-        // return if it already reached the end
         if (num_decisions_made == 2*(int)dag.nodes.size()) {
             return;
         }
 
         int next_node = num_decisions_made / 2;
-        // phase!
-        // 1: choose granularity & tile number
-        // 2: how to parallelize -> tiling
         int phase = num_decisions_made % 2;
 
         if (!may_subtile()) {
@@ -2298,19 +2399,9 @@ struct State {
 
         int num_children = 0;
 
-        // Dump the current schedule HERE!
-        if (root->children.size() != 0) {
-            std::stringstream stream;
-            stream << "{\"type\": \"schedule\", \"contents\": [";
-            root->dump_one("", stream);
-            stream << "]}";
-            std::cout << stream.str() << std::endl;
-        }
-
         if (phase == 0) {
             // Injecting realizations
             {
-                /*
                 // 1) Inline it
                 if (node->stages.size() == 1 && !node->is_output) {
                     auto child = make_child();
@@ -2324,7 +2415,26 @@ struct State {
                         accept_child(std::move(child));
                     }
                 }
-                */
+            }
+
+            // Some search-space pruning. If a node is pointwise, and
+            // so are all its inputs and so is its sole output, and
+            // inlining it is legal, just inline it. This saves time
+            // on long chains of pointwise things.
+            bool must_inline = (node->is_pointwise &&
+                                (num_children > 0) &&
+                                (node->outgoing_edges.size() == 1));
+            if (must_inline) {
+                for (const auto *e : node->stages[0].incoming_edges) {
+                    must_inline &= e->producer->is_pointwise;
+                }
+                for (const auto *e : node->outgoing_edges) {
+                    must_inline &= (e->consumer->node->is_pointwise ||
+                                    e->consumer->node->is_boundary_condition);
+                }
+                if (must_inline) {
+                    return;
+                }
             }
 
             // Construct a list of plausible dimensions to vectorize
@@ -2336,7 +2446,6 @@ struct State {
                 for (int v = 0; v < node->dimensions; v++) {
                     const auto &p = root->get_bounds(node)->region_computed(v);
                     if (p.extent() >= node->vector_size) {
-                      //std::cout << "vector: " << v << std::endl;
                         vector_dims.push_back(v);
                     }
                 }
@@ -2350,36 +2459,19 @@ struct State {
             }
 
             // 2) Realize it somewhere
-            //for (int vector_dim : vector_dims) {
-            int vector_dim = vector_dims[0];
-            auto tile_options = root->compute_in_tiles(node, nullptr, params, vector_dim, false, 0);
-
-            // Specify the granularity here!!
-            int gra;
-            if (root->children.size() != 0) {
-                std::stringstream stream;
-                stream << "{\"type\": \"phase0\", ";
-                stream << "\"func\": \"" << node->func.name() << "\",";
-                stream << " \"contents\": \"";
-                stream << "Specify the compute_at location of <font color=\'lime\'> Func " << node->func.name() << "</font>";
-                stream << " (0 ~ " << tile_options.size() - 1 << ") : ";
-                stream << "\"}";
-                std::cout << stream.str() << std::endl;
-
-                std::cin >> gra;
-            } else {
-                gra = 0;
+            for (int vector_dim : vector_dims) {
+                auto tile_options = root->compute_in_tiles(node, nullptr, params, vector_dim, false);
+                for (IntrusivePtr<const LoopNest> &n : tile_options) {
+                    auto child = make_child();
+                    child->root = std::move(n);
+                    child->num_decisions_made++;
+                    if (child->calculate_cost(dag, params, cost_model)) {
+                        num_children++;
+                        accept_child(std::move(child));
+                    }
+                }
             }
-
-            IntrusivePtr<const LoopNest> ln = tile_options[gra].first;
-            auto child = make_child();
-            child->root = std::move(ln);
-            child->num_decisions_made++;
-
-            num_children++;
-            accept_child(std::move(child));
         } else {
-            // phase == 1の時はtilingしかやってないのかチェック
             // We are parallelizing the loops of the func we just injected a realization for.
 
             bool should_parallelize = false;
@@ -2407,21 +2499,7 @@ struct State {
                 internal_assert(pure_size);
 
                 // Generate some candidate parallel task shapes.
-                // auto tilings = generate_tilings(*pure_size, node->dimensions - 1, 2, true);
-
-                // Tiling specification HERE!
-                int in_x, in_y;
-                std::stringstream stream;
-                stream << "{\"type\": \"phase1\", ";
-                stream << "\"func\": \"" << node->func.name() << "\",";
-                stream << " \"contents\": \"";
-                stream << "Specify the tiling (x y) of <font color=\'lime\'> Func " << node->func.name() << "</font> : ";
-                stream << "\"}";
-                std::cout << stream.str() << std::endl;
-
-                std::cin >> in_x >> in_y;
-
-                std::vector<std::vector<int64_t>> tilings = {{in_x, in_y}};
+                auto tilings = generate_tilings(*pure_size, node->dimensions - 1, 2, true);
 
                 // We could also just parallelize the outer loop entirely
                 std::vector<int64_t> ones;
@@ -2447,11 +2525,9 @@ struct State {
                 vector<Option> options;
                 for (size_t i = 0; i < tilings.size(); i++) {
                     auto &t = tilings[i];
-
                     Option o;
                     o.entire = (i == tilings.size() - 1);
 
-                    // Converting tiling size to parallelize size?
                     for (size_t j = 0; j < pure_size->size(); j++) {
                         t[j] = ((*pure_size)[j] + t[j] - 1) / t[j];
                     }
@@ -2486,7 +2562,7 @@ struct State {
                         ((o.entire || min_total >= params.parallelism) &&
                          (max_total <= params.parallelism * 16));
 
-                    //if (!ok) continue;
+                    if (!ok) continue;
 
                     options.emplace_back(std::move(o));
                 }
@@ -2548,6 +2624,7 @@ struct State {
                 }
             }
         }
+
 
         if (num_children == 0) {
             debug(0) << "Warning: Found no legal way to schedule "
@@ -2822,11 +2899,8 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                           int beam_size,
                                           int pass_idx,
                                           int num_passes,
-                                          std::unordered_set<uint64_t> &permitted_hashes,
-                                          Pipeline &p) {
+                                          std::unordered_set<uint64_t> &permitted_hashes) {
 
-  //std::cout << "beam size: " << beam_size << std::endl;
-  //std::cout << "num passes: " << num_passes << std::endl;
     if (cost_model) {
         configure_pipeline_features(dag, params, cost_model);
     }
@@ -2908,8 +2982,7 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                              beam_size * 2,
                                              pass_idx,
                                              num_passes,
-                                             permitted_hashes,
-                                             p);
+                                             permitted_hashes);
             } else {
                 internal_error << "Ran out of legal states with beam size " << beam_size << "\n";
             }
@@ -2921,12 +2994,9 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
 
         expanded = 0;
         while (expanded < beam_size && !pending.empty()) {
-              //std::cout << "expanded: " << expanded << std::endl;
-              //std::cout << "pending: " << pending.size() << std::endl;
 
             IntrusivePtr<State> state {pending.pop()};
 
-            // Don't need for scheduling tool.
             if (beam_size > 1 && num_passes > 1) {
                 // We are doing coarse-to-fine beam search using the
                 // hashing strategy mentioned in the paper.
@@ -2969,8 +3039,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                 continue;
             }
 
-            // End of scheduling.
-            // *2 because there are two steps for one node.
             if (state->num_decisions_made == 2*(int)dag.nodes.size()) {
                 // We've reached the end of the pass. The first state
                 // must be the best, because we're pulling off a
@@ -3017,7 +3085,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             // The user has set HL_CYOS, and wants to navigate the
             // search space manually.  Discard everything in the queue
             // except for the user-chosen option.
-            /*
             debug(0) << "\n--------------------\n";
             debug(0) << "Select a schedule:\n";
             for (int choice_label = (int)q.size() - 1; choice_label >= 0; choice_label--) {
@@ -3036,38 +3103,8 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             }
 
             auto selected = q[selection];
-            */
-            auto selected = q[0];
-            selected->calculate_cost(dag, params, cost_model, true);
-            cost_model->evaluate_costs();
-
-            //selected->root->node->func.print_loop_nest();
-//            std::cout << Halide::Internal::print_loop_nest(outputs) << std::endl;
-            //std::cout << Halide::Internal::print_loop_nest({selected->root->node->func}) << std::endl;
-
-            /*
-            print time here
-            IntrusivePtr<State> temp = selected->make_clone();
-            temp->apply_schedule(dag, params);
-            const clock_t begin = clock();
-            if (i > 2)
-                p.realize(1000, 1000);
-            float time =  float(clock() - begin) / CLOCKS_PER_SEC;
-                */
-
-
-            std::stringstream stream;
-            stream << "{\"type\": \"cost\", \"contents\": ";
-            stream << "\"Current Cost: " << selected->cost << "\"}";
-
-            //stream << "{\"type\": \"realize\", \"contents\": ";
-            //stream << "\"Run Time: " << time << "\"}";
-
-            std::cout << stream.str() << std::endl;
-
-            //selected->dump();
+            selected->dump();
             q.clear();
-            // 最後にはqにひとつだけ入っているようにする
             q.emplace(std::move(selected));
         }
     }
@@ -3079,8 +3116,7 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
                                      const MachineParams &params,
                                      CostModel *cost_model,
                                      std::mt19937 &rng,
-                                     int beam_size,
-                                     Pipeline &p) {
+                                     int beam_size) {
 
     IntrusivePtr<State> best;
 
@@ -3103,11 +3139,10 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
     }
 
     for (int i = 0; i < num_passes; i++) {
-        auto pass = optimal_schedule_pass(dag, outputs, params, cost_model, rng, beam_size, i, num_passes, permitted_hashes, p);
+        auto pass = optimal_schedule_pass(dag, outputs, params, cost_model, rng, beam_size, i, num_passes, permitted_hashes);
 
-        std::stringstream stream;
-        stream << "{\"type\": \"meta\", \"contents\": \"Done! :)\"}";
-        std::cout << stream.str() << std::endl;
+        debug(0) << "\nPass " << i << " result:\n";
+        pass->dump();
 
         if (i == 0 || pass->cost < best->cost) {
             // Track which pass produced the lowest-cost state. It's
@@ -3116,10 +3151,7 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
         }
     }
 
-    std::stringstream stream;
-    stream << "{\"type\": \"cost\", \"contents\": ";
-    stream << "\"Final Cost: " << best->cost << "\"}";
-    std::cout << stream.str() << std::endl;
+    debug(0) << "Best cost: " << best->cost << "\n";
 
     return best;
 }
@@ -3127,10 +3159,9 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
 // The main entrypoint to generate a schedule for a pipeline.
 std::string generate_schedule(const std::vector<Function> &outputs,
                               const Target &target,
-                              const MachineParams &params,
-                              Pipeline &p) {
+                              const MachineParams &params) {
     // Start a timer
-    //HALIDE_TIC;
+    HALIDE_TIC;
 
     State::cost_calculations = 0;
 
@@ -3141,7 +3172,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     if (!seed_str.empty()) {
         seed = atoi(seed_str.c_str());
     }
-    //debug(0) << "Dropout seed = " << seed << '\n';
+    debug(0) << "Dropout seed = " << seed << '\n';
     std::mt19937 rng((uint32_t) seed);
 
     // Get the beam size
@@ -3163,8 +3194,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
 
     // Analyse the Halide algorithm and construct our abstract representation of it
     FunctionDAG dag(outputs, params, target);
-    // HERE! Probably I can dump dag here.
-    dag.dump_simple();
+    dag.dump();
 
     // Construct a cost model to use to evaluate states. Currently we
     // just have the one, but it's an abstract interface, so others
@@ -3175,33 +3205,23 @@ std::string generate_schedule(const std::vector<Function> &outputs,
     IntrusivePtr<State> optimal;
 
     // Run beam search
-    optimal = optimal_schedule(dag, outputs, params, cost_model.get(), rng, beam_size, p);
+    optimal = optimal_schedule(dag, outputs, params, cost_model.get(), rng, beam_size);
 
-    //HALIDE_TOC;
+    HALIDE_TOC;
 
-    //debug(0) << "Cost evaluated this many times: " << State::cost_calculations << '\n';
+    debug(0) << "Cost evaluated this many times: " << State::cost_calculations << '\n';
 
     // Dump the schedule found
-    //debug(0) << "** Optimal schedule:\n";
+    debug(0) << "** Optimal schedule:\n";
 
     // Just to get the debugging prints to fire
     optimal->calculate_cost(dag, params, cost_model.get(), true);
 
     // Apply the schedules to the pipeline
-    // memo: make Halide schedule here
     optimal->apply_schedule(dag, params);
 
-    const clock_t begin = clock();
-    p.realize(1000, 1000);
-    float time =  float(clock() - begin) / CLOCKS_PER_SEC;
-
-    std::stringstream stream;
-    stream << "{\"type\": \"realize\", \"contents\": ";
-    stream << "\"Run Time: " << time << "\"}";
-    std::cout << stream.str() << std::endl;
-
     // Print out the schedule
-    //optimal->dump();
+    optimal->dump();
 
     string schedule_file = get_env_variable("HL_SCHEDULE_FILE");
     if (!schedule_file.empty()) {
@@ -3230,7 +3250,7 @@ std::string generate_schedule(const std::vector<Function> &outputs,
 // constructor.
 struct RegisterAutoscheduler {
     RegisterAutoscheduler() {
-        //debug(0) << "Registering autoscheduler...\n";
+        debug(0) << "Registering autoscheduler...\n";
         Pipeline::set_custom_auto_scheduler(*this);
     }
 
@@ -3239,24 +3259,21 @@ struct RegisterAutoscheduler {
         for (Func f : p.outputs()) {
             outputs.push_back(f.function());
         }
-
-        return Autoscheduler::generate_schedule(outputs, target, params, p);
+        return Autoscheduler::generate_schedule(outputs, target, params);
     }
 } register_auto_scheduler;
 
 
-/*
 // An alternative entrypoint for other uses
 void find_and_apply_schedule(FunctionDAG& dag,
                              const std::vector<Function> &outputs,
                              const MachineParams &params,
                              CostModel* cost_model,
                              int beam_size,
-                             StageMap<ScheduleFeatures>* schedule_features,
-                             Pipeline &p) {
+                             StageMap<ScheduleFeatures>* schedule_features) {
 
     std::mt19937 rng(12345);
-    IntrusivePtr<State> optimal = optimal_schedule(dag, outputs, params, cost_model, rng, beam_size, p);
+    IntrusivePtr<State> optimal = optimal_schedule(dag, outputs, params, cost_model, rng, beam_size);
 
     // Apply the schedules
     optimal->apply_schedule(dag, params);
@@ -3265,7 +3282,6 @@ void find_and_apply_schedule(FunctionDAG& dag,
         optimal->compute_featurization(dag, params, schedule_features);
     }
 }
-*/
 
 }
 
