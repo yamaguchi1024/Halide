@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
         g(x, y) = f(x, y) * 2 + 1;
         h(x, y) = g(x, y) * 2 + 1;
 
-        h.estimate(x, 0, 1000).estimate(y, 0, 1000);
+        h.set_estimate(x, 0, 1000).set_estimate(y, 0, 1000);
 
         Pipeline(h).auto_schedule(target, params);
     }

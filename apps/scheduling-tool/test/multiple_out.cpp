@@ -31,8 +31,8 @@ int main(int argc, char **argv) {
         out1(x, y) = f(x, y) + g(x, y) + h(x, y);
         out2(x, y) = f(x, y) + g(x, y) + h(x, y);
 
-        out1.estimate(x, 0, 1000).estimate(y, 0, 1000);
-        out2.estimate(x, 0, 1000).estimate(y, 0, 1000);
+        out1.set_estimate(x, 0, 1000).set_estimate(y, 0, 1000);
+        out2.set_estimate(x, 0, 1000).set_estimate(y, 0, 1000);
         Pipeline({out1, out2}).auto_schedule(target, params);
 
     }

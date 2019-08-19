@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
         f(0, y) = 23.0f;
         g(x, y) = f(x - 1, y - 1) + f(x + 1, y + 1);
 
-        g.estimate(x, 1, 1022).estimate(y, 1, 1022);
+        g.set_estimate(x, 1, 1022).set_estimate(y, 1, 1022);
 
         Pipeline(g).auto_schedule(target, params);
     }
