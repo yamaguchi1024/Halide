@@ -69,6 +69,7 @@
 #include <unordered_set>
 
 #include "Halide.h"
+#include "ASLog.h"
 #include "DefaultCostModel.h"
 #include "Featurization.h"
 #include "FunctionDAG.h"
