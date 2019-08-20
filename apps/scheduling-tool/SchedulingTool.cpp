@@ -1,61 +1,3 @@
-/*
-  This file is the core of the autoscheduler. Most of the code here is
-  about navigating the search space and computing the
-  featurization. This also contains the top-level interface into the
-  autoscheduler.
-
-  The most interesting classes to look at are:
-
-  LoopNest               Represents one node in our tree representation of loop nests.
-  State                  A state in the beam search. Holds a root loop nest.
-
-  Interesting functions below are:
-
-  generate_schedule            The top-level entrypoint, which computes and applies a schedule to a Halide pipeline
-  optimal_schedule             Runs the passes of the coarse-to-fine beam search
-  optimal_schedule_pass        Runs a single pass of beam search
-  LoopNest::compute_features   Recursively walks over a loop nest tree, computing our featurization using Halide's analysis tools.
-  LoopNest::apply              Actually apply a computed schedule to a Halide pipeline
-  State::generate_children     Generates successor states to a state in the beam search
-
-  Environment variables used (directly or indirectly):
-
-  HL_BEAM_SIZE
-  Beam size to use in the beam search. Defaults to 32. Use 1 to get a greedy search instead.
-
-  HL_CYOS
-  "Choose-your-own-schedule". If set to 1, lets you navigate the search tree by hand in the terminal. Whee! This is for debugging the autoscheduler.
-
-  HL_FEATURE_FILE -> output
-  Write out a training sample for the selected schedule into this file. Needs to be augmented with the runtime using augment_sample before it can be used to train.
-
-  HL_MACHINE_PARAMS
-  An architecture description string. Used by Halide master to configure the cost model. We only use the first term. Set it to the number of cores to target.
-
-  HL_PERMIT_FAILED_UNROLL
-  Set to 1 to tell Halide not to freak out if we try to unroll a loop that doesn't have a constant extent. Should generally not be necessary, but sometimes the autoscheduler's model for what will and will not turn into a constant during lowering is inaccurate, because Halide isn't perfect at constant-folding.
-
-  HL_SCHEDULE_FILE
-  Write out a human-and-machine readable block of scheduling source code for the selected schedule into this file.
-
-  HL_RANDOM_DROPOUT
-  percent chance of accepting each state in the beam. Normalized by the number of decisions made, so 5 would be there's a 5 percent chance of never rejecting any states.
-
-  HL_SEED
-  Random seed used by the random dropout.
-
-  HL_WEIGHTS_DIR
-  When training or schedule, read weights from this directory
-
-  HL_WEIGHTS_OUT_DIR
-  When training, output updated weights here
-
-  HL_NO_SUBTILING
-  If set to 1, limits the search space to that of Mullapudi et al.
-
-  TODO: expose these settings by adding some means to pass args to
-  generator plugins instead of environment vars.
-*/
 #include <ctime>
 #include <algorithm>
 #include <chrono>
@@ -77,9 +19,6 @@
 #include "Errors.h"
 #include "NetworkSize.h"
 #include "SchedulingTool.h"
-#include "../../src/PrintLoopNest.h"
-
-int hugahuga = 0;
 
 namespace Halide {
 namespace Internal {
@@ -95,35 +34,6 @@ using std::vector;
 using std::map;
 using std::set;
 using std::pair;
-
-// Get the HL_RANDOM_DROPOUT environment variable. Purpose of this is described above.
-uint32_t get_dropout_threshold() {
-    string random_dropout_str = get_env_variable("HL_RANDOM_DROPOUT");
-    if (!random_dropout_str.empty()) {
-        return atoi(random_dropout_str.c_str());
-    } else {
-        return 100;
-    }
-}
-
-// Decide whether or not to drop a beam search state. Used for
-// randomly exploring the search tree for autotuning and to generate
-// training data.
-bool random_dropout(std::mt19937 &rng, size_t num_decisions) {
-    static double random_dropout_threshold = get_dropout_threshold();
-    if (random_dropout_threshold >= 100) return false;
-
-    // The random dropout threshold is the chance that we operate
-    // entirely greedily and never discard anything.
-    double t = random_dropout_threshold;
-    t /= 100;
-    t = std::pow(t, 1.0f / num_decisions);
-    t *= 100;
-
-    uint32_t r = rng();
-    bool drop_it = (r % 100) >= t;
-    return drop_it;
-}
 
 // Get the HL_NO_SUBTILING environment variable. Purpose described above.
 bool get_may_subtile() {
@@ -1255,62 +1165,6 @@ struct LoopNest {
         }
     }
 
-    // Recursively print a loop nest representation to stderr
-    void dump(string prefix, const LoopNest *parent) const {
-
-        if (!is_root()) {
-            debug(0) << prefix << node->func.name();
-            prefix += " ";
-
-            for (size_t i = 0; i < size.size(); i++) {
-                debug(0) << " " << size[i];
-                // The vectorized loop gets a 'v' suffix
-                if (innermost && i == (size_t) vectorized_loop_index) {
-                    debug(0) << 'v';
-                }
-                // Loops that have a known constant size get a
-                // 'c'. Useful for knowing what we can unroll.
-                if (parent->get_bounds(node)->loops(stage->index, i).constant_extent()) {
-                    debug(0) << 'c';
-                }
-            }
-
-            // Uncomment when debugging the representative loop bounds selected.
-            /*
-            const auto &bounds = get_bounds(node);
-            for (size_t i = 0; i < size.size(); i++) {
-                const auto &p = bounds->loops(stage->index, i);
-                debug(0) << " [" << p.first << ", " << p.second << "]";
-            }
-            */
-
-            debug(0) << " (" << vectorized_loop_index << ", " << vector_dim << ")";
-        }
-
-        if (tileable) {
-            debug(0) << " t";
-        }
-        if (innermost) {
-            debug(0) << " *\n";
-        } else if (parallel) {
-            debug(0) << " p\n";
-        } else {
-            debug(0) << '\n';
-        }
-        for (auto p : store_at) {
-            debug(0) << prefix << "realize: " << p->func.name() << '\n';
-        }
-
-        for (size_t i = children.size(); i > 0; i--) {
-          // Loop number output here!
-          children[i-1]->dump(prefix, this);
-        }
-
-        for (auto it = inlined.begin(); it != inlined.end(); it++) {
-            debug(0) << prefix << "inlined: " << it.key()->func.name() << " " << it.value() << '\n';
-        }
-    }
-
     // Does this loop nest access the given Func
     bool calls(const FunctionDAG::Node *f) const {
         for (const auto &c : children) {
@@ -1510,13 +1364,6 @@ struct LoopNest {
     IntrusivePtr<const LoopNest> parallelize_in_tiles(const MachineParams &params,
                                                       const vector<int64_t> &tiling,
                                                       const LoopNest *parent) const {
-        /*
-      std::cout << "parallelize_in_tiles" << std::endl;
-      for (int i = 0; i < tiling.size(); i++)
-        std::cout << tiling[i] << " ";
-      std::cout << std::endl;
-      */
-
         // Split this loop and move factors to the inner loop
         LoopNest *inner = new LoopNest, *outer = new LoopNest;
         inner->node      = outer->node      = node;
@@ -2086,7 +1933,6 @@ struct State {
                 const LoopNest *l = consumer_site.innermost;
                 if (!l) l = consumer_site.compute;
                 if (!l) {
-                    dump();
                     internal_error << e->producer->func.name() << " -> " << e->consumer->name << "\n";
                 }
                 if (loop) {
@@ -2126,8 +1972,6 @@ struct State {
             for (auto it = features.begin(); it != features.end(); it++) {
                 auto &stage = *(it.key());
                 const auto &feat = it.value();
-                //debug(0) << "Schedule features for " << stage.stage.name() << "\n";
-                //feat.dump();
             }
         }
 
@@ -2246,25 +2090,10 @@ struct State {
             // We don't need to schedule nodes that represent inputs,
             // and there are no other decisions to be made about them
             // at this time.
-            // debug(0) << "Skipping over scheduling input node: " << node->func.name() << "\n";
             auto child = make_child();
             child->num_decisions_made++;
             accept_child(std::move(child));
             return;
-        }
-
-        if (!node->outgoing_edges.empty() && !root->calls(node)) {
-            debug(0) << "In state:\n";
-            dump();
-            debug(0) << node->func.name() << " is consumed by:\n";
-            for (const auto *e : node->outgoing_edges) {
-                debug(0) << e->consumer->name << "\n";
-                debug(0) << "Which in turn consumes:\n";
-                for (const auto *e2 : e->consumer->incoming_edges) {
-                    debug(0) << "  " << e2->producer->func.name() << "\n";
-                }
-            }
-            internal_error << "Pipeline so far doesn't use next Func: " << node->func.name() << '\n';
         }
 
         int num_children = 0;
@@ -2307,7 +2136,6 @@ struct State {
                 for (int v = 0; v < node->dimensions; v++) {
                     const auto &p = root->get_bounds(node)->region_computed(v);
                     if (p.extent() >= node->vector_size) {
-                      //std::cout << "vector: " << v << std::endl;
                         vector_dims.push_back(v);
                     }
                 }
@@ -2523,17 +2351,10 @@ struct State {
         if (num_children == 0) {
             debug(0) << "Warning: Found no legal way to schedule "
                      << node->func.name() << " in the following State:\n";
-            dump();
             // All our children died. Maybe other states have had
             // children. Carry on.
         }
 
-    }
-
-    void dump() const {
-        debug(0) << "State with cost " << cost << ":\n";
-        root->dump("", nullptr);
-        debug(0) << schedule_source;
     }
 
     string schedule_source;
@@ -2796,8 +2617,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                           std::unordered_set<uint64_t> &permitted_hashes,
                                           Pipeline &p) {
 
-  //std::cout << "beam size: " << beam_size << std::endl;
-  //std::cout << "num passes: " << num_passes << std::endl;
     if (cost_model) {
         configure_pipeline_features(dag, params, cost_model);
     }
@@ -2814,35 +2633,12 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
     // A progress bar.
     uint32_t counter = 0;
     bool draw_progress_bar = isatty(2);
-    auto tick = [&](double progress) {
-        if (!draw_progress_bar) return;
-        counter++;
-        const int bits = 11;
-        if (counter & ((1 << bits) - 1)) return;
-        progress *= 78;
-        debug(0) << '[';
-        for (int j = 0; j < 78; j++) {
-            if (j < progress) {
-                debug(0) << '.';
-            } else if (j - 1 < progress) {
-                debug(0) << "/-\\|"[(counter >> bits) % 4];
-            } else {
-                debug(0) << ' ';
-            }
-        }
-        debug(0) << ']';
-        for (int j = 0; j < 80; j++) {
-            debug(0) << '\b';
-        }
-    };
 
     int expanded = 0;
 
     std::function<void(IntrusivePtr<State> &&)> enqueue_new_children =
         [&](IntrusivePtr<State> &&s) {
 
-        // debug(0) << "\n** Generated child: ";
-        // s->dump();
         // s->calculate_cost(dag, params, nullptr, true);
 
         // Each child should have one more decision made than its parent state.
@@ -2852,7 +2648,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         size_t max_progress = dag.nodes.size() * beam_size * 2;
 
         // Update the progress bar
-        tick(double(progress) / max_progress);
         s->penalized = false;
 
         // Add the state to the list of states to evaluate
@@ -2892,9 +2687,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
 
         expanded = 0;
         while (expanded < beam_size && !pending.empty()) {
-              //std::cout << "expanded: " << expanded << std::endl;
-              //std::cout << "pending: " << pending.size() << std::endl;
-
             IntrusivePtr<State> state {pending.pop()};
 
             // Don't need for scheduling tool.
@@ -2933,11 +2725,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                         }
                     }
                 }
-            }
-
-            // Random dropout
-            if (pending.size() > 1 && random_dropout(rng, dag.nodes.size() * 2)) {
-                continue;
             }
 
             // End of scheduling.
@@ -2994,7 +2781,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             for (int choice_label = (int)q.size() - 1; choice_label >= 0; choice_label--) {
                 auto state = q[choice_label];
                 debug(0) << "\n[" << choice_label << "]:\n";
-                state->dump();
                 state->calculate_cost(dag, params, cost_model, true);
             }
             cost_model->evaluate_costs();
@@ -3036,7 +2822,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
 
             std::cout << stream.str() << std::endl;
 
-            //selected->dump();
             q.clear();
             // 最後にはqにひとつだけ入っているようにする
             q.emplace(std::move(selected));
@@ -3101,9 +2886,6 @@ void generate_schedule(const std::vector<Function> &outputs,
                               const MachineParams &params,
                               Pipeline &p,
                               AutoSchedulerResults *auto_scheduler_results) {
-    // Start a timer
-    //HALIDE_TIC;
-
     State::cost_calculations = 0;
 
     // Get the seed for random dropout
@@ -3113,7 +2895,7 @@ void generate_schedule(const std::vector<Function> &outputs,
     if (!seed_str.empty()) {
         seed = atoi(seed_str.c_str());
     }
-    //debug(0) << "Dropout seed = " << seed << '\n';
+
     std::mt19937 rng((uint32_t) seed);
 
     // Get the beam size
@@ -3149,13 +2931,6 @@ void generate_schedule(const std::vector<Function> &outputs,
     // Run beam search
     optimal = optimal_schedule(dag, outputs, params, cost_model.get(), rng, beam_size, p);
 
-    //HALIDE_TOC;
-
-    //debug(0) << "Cost evaluated this many times: " << State::cost_calculations << '\n';
-
-    // Dump the schedule found
-    //debug(0) << "** Optimal schedule:\n";
-
     // Just to get the debugging prints to fire
     optimal->calculate_cost(dag, params, cost_model.get(), true);
 
@@ -3171,9 +2946,6 @@ void generate_schedule(const std::vector<Function> &outputs,
     stream << "{\"type\": \"realize\", \"contents\": ";
     stream << "\"Run Time: " << time << "\"}";
     std::cout << stream.str() << std::endl;
-
-    // Print out the schedule
-    //optimal->dump();
 
     string schedule_file = get_env_variable("HL_SCHEDULE_FILE");
     if (!schedule_file.empty()) {
@@ -3202,7 +2974,6 @@ void generate_schedule(const std::vector<Function> &outputs,
 // constructor.
 struct RegisterAutoscheduler {
     RegisterAutoscheduler() {
-        //debug(0) << "Registering autoscheduler...\n";
         Pipeline::set_custom_auto_scheduler(*this);
     }
 
@@ -3215,29 +2986,6 @@ struct RegisterAutoscheduler {
         Autoscheduler::generate_schedule(outputs, target, params, p, results);
     }
 } register_auto_scheduler;
-
-
-/*
-// An alternative entrypoint for other uses
-void find_and_apply_schedule(FunctionDAG& dag,
-                             const std::vector<Function> &outputs,
-                             const MachineParams &params,
-                             CostModel* cost_model,
-                             int beam_size,
-                             StageMap<ScheduleFeatures>* schedule_features,
-                             Pipeline &p) {
-
-    std::mt19937 rng(12345);
-    IntrusivePtr<State> optimal = optimal_schedule(dag, outputs, params, cost_model, rng, beam_size, p);
-
-    // Apply the schedules
-    optimal->apply_schedule(dag, params);
-
-    if (schedule_features) {
-        optimal->compute_featurization(dag, params, schedule_features);
-    }
-}
-*/
 
 }
 
