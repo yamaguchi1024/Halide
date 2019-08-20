@@ -19,7 +19,6 @@ int main(int argc, char **argv) {
     // A Func with multiple stages, some of which include additional loops
     Buffer<float> a(1024, 1024);
     Func f("multiple_stages"), g("g"), h("h");
-    Var x, y;
     h(x, y) = pow(x, y);
     f(x, y) = a(x, y) * 2;
     f(x, y) += 17;

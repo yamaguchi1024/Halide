@@ -21,7 +21,6 @@ int main(int argc, char **argv) {
     // than points computed minimum, and the LUT should be
     // inlined, even if it's really expensive.
     Func lut("lut");
-    Var x;
     lut(x) = (x + 1) * (x + 2) * (x + 3) * (x + 4) * (x + 5) * (x + 6);
 
     Func idx("idx");

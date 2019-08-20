@@ -21,7 +21,6 @@ int main(int argc, char **argv) {
     Func f_u64_2("f_u64_2");
     Buffer<uint8_t> a(1024 * 1024 + 2);
 
-    Var x;
     f_u8(x) = (min(a(x) + 1, 17) * a(x+1) + a(x+2)) * a(x) * a(x) * a(x + 1) * a(x + 1);
     f_u64_1(x) = cast<uint64_t>(f_u8(x)) + 1;
     f_u64_2(x) = f_u64_1(x) * 3;

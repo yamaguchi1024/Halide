@@ -21,7 +21,6 @@ int main(int argc, char **argv) {
     Buffer<float> a(1024, 1024);
     Func p1[N], p2[N], p3[N];
     Func s("scan");
-    Var x, y;
     p1[0](x, y) = x + y;
     for (int i = 1; i < N; i++) {
         p1[i](x, y) = p1[i-1](x, y) + 1;

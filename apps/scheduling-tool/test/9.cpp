@@ -21,7 +21,6 @@ int main(int argc, char **argv) {
     Func before[5];
     Func after[5];
     Func s("scan");
-    Var x, y;
     before[0](x, y) = x + y;
     for (int i = 1; i < 5; i++) {
         before[i](x, y) = before[i-1](x, y) + 1;
