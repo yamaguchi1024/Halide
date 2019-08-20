@@ -1394,7 +1394,6 @@ struct LoopNest {
 
             int64_t outer_extent;
             if (l >= 0) {
-                internal_assert(l < (int)tiling.size()) << l << " " << tiling.size() << "\n";
                 outer_extent = tiling[l];
             } else {
                 // RVars are moved inwards
