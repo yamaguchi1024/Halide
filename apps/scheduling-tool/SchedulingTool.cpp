@@ -2630,12 +2630,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         q.emplace(std::move(initial));
     }
 
-    // A progress bar.
-    uint32_t counter = 0;
-    bool draw_progress_bar = isatty(2);
-
-    int expanded = 0;
-
     std::function<void(IntrusivePtr<State> &&)> enqueue_new_children =
         [&](IntrusivePtr<State> &&s) {
 
@@ -2644,7 +2638,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         // Each child should have one more decision made than its parent state.
         internal_assert(s->num_decisions_made == s->parent->num_decisions_made + 1);
 
-        int progress = s->num_decisions_made * beam_size + expanded;
         size_t max_progress = dag.nodes.size() * beam_size * 2;
 
         // Update the progress bar
@@ -2654,178 +2647,99 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         q.emplace(std::move(s));
     };
 
-    string cyos_str = get_env_variable("HL_CYOS");
-
     // This loop is beam search over the sequence of decisions to make.
     for (int i = 0; ; i++) {
         std::unordered_map<uint64_t, int> hashes;
         q.swap(pending);
 
-        if (pending.empty()) {
-            if (false && beam_size < 1000) {
-                // Total mortality. Double the beam size and
-                // restart. Disabled for now because total mortality
-                // may indicate a bug.
-                return optimal_schedule_pass(dag,
-                                             outputs,
-                                             params,
-                                             cost_model,
-                                             rng,
-                                             beam_size * 2,
-                                             pass_idx,
-                                             num_passes,
-                                             permitted_hashes,
-                                             p);
-            } else {
-                internal_error << "Ran out of legal states with beam size " << beam_size << "\n";
-            }
-        }
+        IntrusivePtr<State> state {pending.pop()};
 
-        if ((int)pending.size() > beam_size * 10000) {
-            debug(0) << "Warning: Huge number of states generated (" << pending.size() << ").\n";
-        }
+        // End of scheduling.
+        // *2 because there are two steps for one node.
+        if (state->num_decisions_made == 2*(int)dag.nodes.size()) {
+            // We've reached the end of the pass. The first state
+            // must be the best, because we're pulling off a
+            // priority queue.
+            auto best = state;
 
-        expanded = 0;
-        while (expanded < beam_size && !pending.empty()) {
-            IntrusivePtr<State> state {pending.pop()};
-
-            // Don't need for scheduling tool.
-            if (beam_size > 1 && num_passes > 1) {
-                // We are doing coarse-to-fine beam search using the
-                // hashing strategy mentioned in the paper.
-                //
-                // We will lazily apply cost penalties to the queue
-                // according to structural uniqueness.
-                if (!state->penalized) {
-                    uint64_t h1 = state->structural_hash(pass_idx + 1);
-                    uint64_t h0 = state->structural_hash(pass_idx - 1);
-                    // We penalize the cost of a state proportionately
-                    // to how many states we've already seen with that
-                    // hash.
-                    int penalty = ++hashes[h1];
-                    if (pass_idx > 0 && !permitted_hashes.count(h0)) {
-                        // It's possible to get yourself into a state
-                        // where the only things in the beam that match
-                        // the hash were quick-rejected due to details not
-                        // captured in the hash, so we apply a huge
-                        // penalty, but leave the impermissible state in
-                        // the beam.
-                        penalty += 10;
+            // Bless the reasonable stuff in the beam as
+            // permissible states to visit again. We define
+            // reasonable as having a cost no more than 20% higher
+            // than the cost of the best thing. Only do this if
+            // there are more coarse-to-fine passes yet to come.
+            if (pass_idx + 1 < num_passes) {
+                int blessed = 0;
+                while (state->cost <= 1.2 * best->cost && blessed < beam_size) {
+                    const State *s = state.get();
+                    while (s) {
+                        uint64_t h1 = s->structural_hash(pass_idx);
+                        permitted_hashes.insert(h1);
+                        s = s->parent.get();
                     }
-                    if (penalty > 1) {
-                        state->penalized = true;
-                        state->cost *= penalty;
-                        // After penalizing this state, if it's no
-                        // longer the best, defer it. We set the
-                        // 'penalized' flag so that we know not to
-                        // penalize and defer it again.
-                        if (!pending.empty() && state->cost > pending.top()->cost) {
-                            pending.emplace(std::move(state));
-                            continue;
-                        }
-                    }
+                    if (pending.empty()) break;
+                    state = pending.pop();
+                    blessed++;
                 }
             }
 
-            // End of scheduling.
-            // *2 because there are two steps for one node.
-            if (state->num_decisions_made == 2*(int)dag.nodes.size()) {
-                // We've reached the end of the pass. The first state
-                // must be the best, because we're pulling off a
-                // priority queue.
-                auto best = state;
-
-                // Bless the reasonable stuff in the beam as
-                // permissible states to visit again. We define
-                // reasonable as having a cost no more than 20% higher
-                // than the cost of the best thing. Only do this if
-                // there are more coarse-to-fine passes yet to come.
-                if (pass_idx + 1 < num_passes) {
-                    int blessed = 0;
-                    while (state->cost <= 1.2 * best->cost && blessed < beam_size) {
-                        const State *s = state.get();
-                        while (s) {
-                            uint64_t h1 = s->structural_hash(pass_idx);
-                            permitted_hashes.insert(h1);
-                            s = s->parent.get();
-                        }
-                        if (pending.empty()) break;
-                        state = pending.pop();
-                        blessed++;
-                    }
-                }
-
-                return best;
-            }
-
-            state->generate_children(dag, params, cost_model, enqueue_new_children);
-            expanded++;
+            return best;
         }
+
+        state->generate_children(dag, params, cost_model, enqueue_new_children);
 
         // Drop the other states unconsidered.
         pending.clear();
 
-        if (cost_model) {
-            // Now evaluate all the costs and re-sort them in the priority queue
-            cost_model->evaluate_costs();
-            q.resort();
+        /*
+        debug(0) << "\n--------------------\n";
+        debug(0) << "Select a schedule:\n";
+        for (int choice_label = (int)q.size() - 1; choice_label >= 0; choice_label--) {
+            auto state = q[choice_label];
+            debug(0) << "\n[" << choice_label << "]:\n";
+            state->calculate_cost(dag, params, cost_model, true);
+        }
+        cost_model->evaluate_costs();
+
+        // Select next partial schedule to expand.
+        int selection = -1;
+        while (selection < 0 || selection >= (int)q.size()) {
+            debug(0) << "\nEnter selection: ";
+            std::cin >> selection;
         }
 
-        if (cyos_str == "1") {
-            // The user has set HL_CYOS, and wants to navigate the
-            // search space manually.  Discard everything in the queue
-            // except for the user-chosen option.
-            /*
-            debug(0) << "\n--------------------\n";
-            debug(0) << "Select a schedule:\n";
-            for (int choice_label = (int)q.size() - 1; choice_label >= 0; choice_label--) {
-                auto state = q[choice_label];
-                debug(0) << "\n[" << choice_label << "]:\n";
-                state->calculate_cost(dag, params, cost_model, true);
-            }
-            cost_model->evaluate_costs();
+        auto selected = q[selection];
+        */
+        auto selected = q[0];
+        selected->calculate_cost(dag, params, cost_model, true);
+        cost_model->evaluate_costs();
 
-            // Select next partial schedule to expand.
-            int selection = -1;
-            while (selection < 0 || selection >= (int)q.size()) {
-                debug(0) << "\nEnter selection: ";
-                std::cin >> selection;
-            }
-
-            auto selected = q[selection];
-            */
-            auto selected = q[0];
-            selected->calculate_cost(dag, params, cost_model, true);
-            cost_model->evaluate_costs();
-
-            //selected->root->node->func.print_loop_nest();
+        //selected->root->node->func.print_loop_nest();
 //            std::cout << Halide::Internal::print_loop_nest(outputs) << std::endl;
-            //std::cout << Halide::Internal::print_loop_nest({selected->root->node->func}) << std::endl;
+        //std::cout << Halide::Internal::print_loop_nest({selected->root->node->func}) << std::endl;
 
-            /*
-            print time here
-            IntrusivePtr<State> temp = selected->make_clone();
-            temp->apply_schedule(dag, params);
-            const clock_t begin = clock();
-            if (i > 2)
-                p.realize(1000, 1000);
-            float time =  float(clock() - begin) / CLOCKS_PER_SEC;
-                */
+        /*
+        print time here
+        IntrusivePtr<State> temp = selected->make_clone();
+        temp->apply_schedule(dag, params);
+        const clock_t begin = clock();
+        if (i > 2)
+            p.realize(1000, 1000);
+        float time =  float(clock() - begin) / CLOCKS_PER_SEC;
+            */
 
 
-            std::stringstream stream;
-            stream << "{\"type\": \"cost\", \"contents\": ";
-            stream << "\"Current Cost: " << selected->cost << "\"}";
+        std::stringstream stream;
+        stream << "{\"type\": \"cost\", \"contents\": ";
+        stream << "\"Current Cost: " << selected->cost << "\"}";
 
-            //stream << "{\"type\": \"realize\", \"contents\": ";
-            //stream << "\"Run Time: " << time << "\"}";
+        //stream << "{\"type\": \"realize\", \"contents\": ";
+        //stream << "\"Run Time: " << time << "\"}";
 
-            std::cout << stream.str() << std::endl;
+        std::cout << stream.str() << std::endl;
 
-            q.clear();
-            // 最後にはqにひとつだけ入っているようにする
-            q.emplace(std::move(selected));
-        }
+        q.clear();
+        // 最後にはqにひとつだけ入っているようにする
+        q.emplace(std::move(selected));
     }
 }
 
@@ -2842,15 +2756,7 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
 
     std::unordered_set<uint64_t> permitted_hashes;
 
-    // If the beam size is one, it's pointless doing multiple passes.
-    int num_passes = (beam_size == 1) ? 1 : 5;
-
-    string cyos_str = get_env_variable("HL_CYOS");
-    if (cyos_str == "1") {
-        // If the user is manually navigating the search space, don't
-        // ask them to do more than one pass.
-        num_passes = 1;
-    }
+    int num_passes = 1;
 
     string num_passes_str = get_env_variable("HL_NUM_PASSES");
     if (!num_passes_str.empty()) {
