@@ -2137,11 +2137,6 @@ struct State {
             Option o;
             o.entire = (i == tilings.size() - 1);
 
-            // Converting tiling size to parallelize size?
-            for (size_t j = 0; j < pure_size->size(); j++) {
-                t[j] = ((*pure_size)[j] + t[j] - 1) / t[j];
-            }
-
             // Delete options with the same tiling size
             bool flag = false;
             for (const auto& o: options) {
@@ -2342,8 +2337,8 @@ struct State {
                 std::vector<std::vector<int64_t>> tilings;
                 int size_y = (*pure_size)[0];
                 int size_x = (*pure_size)[1];
-                for (int y = 2; y < size_y; y += 2) {
-                    for (int x = 2; x < size_x; x += 2) {
+                for (int y = 2; y < size_y; y += 4) {
+                    for (int x = 2; x < size_x; x += 4) {
                         tilings.push_back({y, x});
                     }
                 }
