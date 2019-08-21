@@ -2107,25 +2107,6 @@ struct State {
         }
 
         if (phase == 0) {
-            // Injecting realizations
-            {
-                /*
-                // 1) Inline it
-                if (node->stages.size() == 1 && !node->is_output) {
-                    auto child = make_child();
-                    LoopNest *new_root = new LoopNest;
-                    new_root->copy_from(*root);
-                    new_root->inline_func(node);
-                    child->root = new_root;
-                    child->num_decisions_made++;
-                    if (child->calculate_cost(dag, params, cost_model)) {
-                        num_children++;
-                        accept_child(std::move(child));
-                    }
-                }
-                */
-            }
-
             // Construct a list of plausible dimensions to vectorize
             // over. Currently all of them. TODO: Pre-prune the list
             // of sane dimensions to vectorize a Func over to reduce
@@ -2152,7 +2133,26 @@ struct State {
             int vector_dim = vector_dims[0];
             auto tile_options = root->compute_in_tiles(node, nullptr, params, vector_dim, false, 0);
 
+            // print cost for each row HERE!
+            for (int i = 0; i < tile_options.size(); i++) {
+                IntrusivePtr<const LoopNest> ln = tile_options[i].first;
+                auto child = make_child();
+                child->root = std::move(ln);
+
+                child->calculate_cost(dag, params, cost_model, true);
+                cost_model->evaluate_costs();
+                //std::cout << i << " " << child->cost << std::endl;;
+
+                std::stringstream stream;
+                stream << "{\"type\": \"line_cost\", ";
+                stream << " \"linenum\": \"" << i << "\"";
+                stream << ", \"costs\": \"" << child->cost;
+                stream << "\"}";
+                std::cout << stream.str() << std::endl;
+            }
+
             // Specify the granularity here!!
+            // FIXME: I think 0~something is wrong. We should read tile_options.second.
             int gra;
             if (root->children.size() != 0) {
                 std::stringstream stream;
