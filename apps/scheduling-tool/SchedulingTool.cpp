@@ -2051,6 +2051,141 @@ struct State {
         return s;
     }
 
+    // Sort / filter the options
+    struct Option {
+        vector<int64_t> tiling;
+        double idle_core_wastage;
+        bool entire;
+        bool operator<(const Option &other) const {
+            return idle_core_wastage < other.idle_core_wastage;
+        }
+        // Ensure we don't accidentally copy this type
+        Option() = default;
+        Option(Option &&) = default;
+        Option &operator=(Option &&) = default;
+        Option(const Option &) = delete;
+        Option &operator=(const Option &) = delete;
+    };
+
+    std::vector<std::pair<IntrusivePtr<State>, std::vector<int64_t>>> make_state_from_options(
+            std::vector<Option> &options,
+            const MachineParams &params,
+            int num_children,
+            const FunctionDAG::Node *node,
+            const FunctionDAG &dag,
+            CostModel *cost_model) const {
+        std::vector<std::pair<IntrusivePtr<State>, std::vector<int64_t>>> states;
+
+        for (const auto &o : options) {
+            if (num_children >= 1 && (o.idle_core_wastage > 1.2 || !may_subtile())) {
+                // We have considered several options, and the
+                // remaining ones leave lots of cores idle.
+                break;
+            }
+
+            auto child = make_child();
+            LoopNest *new_root = new LoopNest;
+            new_root->copy_from(*root);
+            for (auto &c : new_root->children) {
+                if (c->node == node) {
+                    if (may_subtile()) {
+                        c = c->parallelize_in_tiles(params, o.tiling, new_root);
+                    } else {
+                        // We're emulating the old
+                        // autoscheduler for an ablation, so
+                        // emulate its parallelism strategy:
+                        // just keep parallelizing outer loops
+                        // until enough are parallel.
+                        vector<int64_t> tiling = c->size;
+                        int64_t total = 1;
+                        for (size_t i = c->size.size(); i > 0; i--) {
+                            if (!c->stage->loop[i-1].pure || total >= params.parallelism) {
+                                tiling[i-1] = 1;
+                            }
+                            while (tiling[i-1] > 1 &&
+                                    total * tiling[i-1] > params.parallelism * 8) {
+                                tiling[i-1] /= 2;
+                            }
+                            total *= tiling[i-1];
+                        }
+                        c = c->parallelize_in_tiles(params, tiling, new_root);
+                    }
+                }
+            }
+            child->root = new_root;
+            child->num_decisions_made++;
+            if (child->calculate_cost(dag, params, cost_model)) {
+                cost_model->evaluate_costs();
+                states.push_back(std::make_pair(std::move(child), o.tiling));
+            }
+        }
+
+        return states;
+    }
+
+    std::vector<Option> make_options_from_tilings(
+            std::vector<std::vector<int64_t>> &tilings, 
+            const MachineParams &params,
+            const FunctionDAG::Node *node,
+            const vector<int64_t> *pure_size 
+        ) const {
+
+        std::vector<Option> options;
+        for (size_t i = 0; i < tilings.size(); i++) {
+            auto &t = tilings[i];
+
+            Option o;
+            o.entire = (i == tilings.size() - 1);
+
+            // Converting tiling size to parallelize size?
+            for (size_t j = 0; j < pure_size->size(); j++) {
+                t[j] = ((*pure_size)[j] + t[j] - 1) / t[j];
+            }
+
+            // Delete options with the same tiling size
+            bool flag = false;
+            for (const auto& o: options) {
+                if (o.tiling[0] == t[0] && o.tiling[1] == t[1])
+                    flag = true;
+            }
+            if (flag) continue;
+
+            t.swap(o.tiling);
+
+            // Compute max idle cores across the other stages of the Func
+            int64_t min_total = 0, max_total = 0;
+            o.idle_core_wastage = 1;
+            for (const auto &c : root->children) {
+                if (c->node == node) {
+                    int64_t total = 1;
+                    for (auto &l : c->stage->loop) {
+                        if (!l.rvar) {
+                            total *= o.tiling[l.pure_dim];
+                        }
+                    }
+                    if (min_total != 0) {
+                        min_total = std::min(min_total, total);
+                    } else {
+                        min_total = total;
+                    }
+                    max_total = std::max(max_total, total);
+                    const double tasks_per_core = ((double)total) / params.parallelism;
+                    o.idle_core_wastage = std::max(o.idle_core_wastage,
+                            std::ceil(tasks_per_core) /
+                            tasks_per_core);
+                }
+            }
+
+            // Filter out the less useful options
+            bool ok =
+                ((o.entire || min_total >= params.parallelism) &&
+                 (max_total <= params.parallelism * 16));
+
+            options.emplace_back(std::move(o));
+        }
+        return options;
+    }
+
     // Generate the successor states to this state
     void generate_children(const FunctionDAG &dag,
                            const MachineParams &params,
@@ -2204,23 +2339,6 @@ struct State {
             } else {
                 internal_assert(pure_size);
 
-                // Generate some candidate parallel task shapes.
-                // auto tilings = generate_tilings(*pure_size, node->dimensions - 1, 2, true);
-
-                // Tiling specification HERE!
-                /*
-                int in_x, in_y;
-                std::stringstream stream;
-                stream << "{\"type\": \"phase1\", ";
-                stream << "\"func\": \"" << node->func.name() << "\",";
-                stream << " \"contents\": \"";
-                stream << "Specify the tiling (x y) of <font color=\'lime\'> Func " << node->func.name() << "</font> : ";
-                stream << "\"}";
-                std::cout << stream.str() << std::endl;
-
-                std::cin >> in_x >> in_y;
-                */
-
                 std::vector<std::vector<int64_t>> tilings;
                 int size_y = (*pure_size)[0];
                 int size_x = (*pure_size)[1];
@@ -2230,84 +2348,12 @@ struct State {
                     }
                 }
 
-                std::vector<std::pair<IntrusivePtr<State>, std::vector<int64_t>>> tiling_childs;
-
                 // We could also just parallelize the outer loop entirely
                 std::vector<int64_t> ones;
                 ones.resize(pure_size->size(), 1);
                 tilings.emplace_back(std::move(ones));
 
-                // Sort / filter the options
-                struct Option {
-                    vector<int64_t> tiling;
-                    double idle_core_wastage;
-                    bool entire;
-                    bool operator<(const Option &other) const {
-                        return idle_core_wastage < other.idle_core_wastage;
-                    }
-                    // Ensure we don't accidentally copy this type
-                    Option() = default;
-                    Option(Option &&) = default;
-                    Option &operator=(Option &&) = default;
-                    Option(const Option &) = delete;
-                    Option &operator=(const Option &) = delete;
-                };
-
-                vector<Option> options;
-                for (size_t i = 0; i < tilings.size(); i++) {
-                    auto &t = tilings[i];
-
-                    Option o;
-                    o.entire = (i == tilings.size() - 1);
-
-                    // Converting tiling size to parallelize size?
-                    for (size_t j = 0; j < pure_size->size(); j++) {
-                        t[j] = ((*pure_size)[j] + t[j] - 1) / t[j];
-                    }
-
-                    // Delete options with the same tiling size
-                    bool flag = false;
-                    for (const auto& o: options) {
-                        if (o.tiling[0] == t[0] && o.tiling[1] == t[1])
-                            flag = true;
-                    }
-                    if (flag) continue;
-
-                    t.swap(o.tiling);
-
-                    // Compute max idle cores across the other stages of the Func
-                    int64_t min_total = 0, max_total = 0;
-                    o.idle_core_wastage = 1;
-                    for (const auto &c : root->children) {
-                        if (c->node == node) {
-                            int64_t total = 1;
-                            for (auto &l : c->stage->loop) {
-                                if (!l.rvar) {
-                                    total *= o.tiling[l.pure_dim];
-                                }
-                            }
-                            if (min_total != 0) {
-                                min_total = std::min(min_total, total);
-                            } else {
-                                min_total = total;
-                            }
-                            max_total = std::max(max_total, total);
-                            const double tasks_per_core = ((double)total) / params.parallelism;
-                            o.idle_core_wastage = std::max(o.idle_core_wastage,
-                                                           std::ceil(tasks_per_core) /
-                                                           tasks_per_core);
-                        }
-                    }
-
-                    // Filter out the less useful options
-                    bool ok =
-                        ((o.entire || min_total >= params.parallelism) &&
-                         (max_total <= params.parallelism * 16));
-
-                    //if (!ok) continue;
-
-                    options.emplace_back(std::move(o));
-                }
+                auto options = make_options_from_tilings(tilings, params, node, pure_size);
 
                 std::sort(options.begin(), options.end());
 
@@ -2322,49 +2368,7 @@ struct State {
                     return;
                 }
 
-                for (const auto &o : options) {
-                    if (num_children >= 1 && (o.idle_core_wastage > 1.2 || !may_subtile())) {
-                        // We have considered several options, and the
-                        // remaining ones leave lots of cores idle.
-                        break;
-                    }
-
-                    auto child = make_child();
-                    LoopNest *new_root = new LoopNest;
-                    new_root->copy_from(*root);
-                    for (auto &c : new_root->children) {
-                        if (c->node == node) {
-                            if (may_subtile()) {
-                                c = c->parallelize_in_tiles(params, o.tiling, new_root);
-                            } else {
-                                // We're emulating the old
-                                // autoscheduler for an ablation, so
-                                // emulate its parallelism strategy:
-                                // just keep parallelizing outer loops
-                                // until enough are parallel.
-                                vector<int64_t> tiling = c->size;
-                                int64_t total = 1;
-                                for (size_t i = c->size.size(); i > 0; i--) {
-                                    if (!c->stage->loop[i-1].pure || total >= params.parallelism) {
-                                        tiling[i-1] = 1;
-                                    }
-                                    while (tiling[i-1] > 1 &&
-                                           total * tiling[i-1] > params.parallelism * 8) {
-                                        tiling[i-1] /= 2;
-                                    }
-                                    total *= tiling[i-1];
-                                }
-                                c = c->parallelize_in_tiles(params, tiling, new_root);
-                            }
-                        }
-                    }
-                    child->root = new_root;
-                    child->num_decisions_made++;
-                    if (child->calculate_cost(dag, params, cost_model)) {
-                        cost_model->evaluate_costs();
-                        tiling_childs.push_back(std::make_pair(std::move(child), o.tiling));
-                    }
-                }
+                auto tiling_childs = make_state_from_options(options, params, num_children, node, dag, cost_model);
 
                 std::sort(tiling_childs.begin(), tiling_childs.end(),
                         [](std::pair<IntrusivePtr<State>, std::vector<int64_t>> t1,
@@ -2373,31 +2377,47 @@ struct State {
                         });
 
                 std::vector<std::pair<IntrusivePtr<State>, std::vector<int64_t>>> suggestions;
-                std::stringstream suggest;
+                std::stringstream coststr;
+                std::stringstream tilingstr;
                 for (int i = 0; i < tiling_childs.size(); i+=10) {
                     if (suggestions.size() >= 5) break;
                     suggestions.push_back(tiling_childs[i]);
-                    if (i != 0) suggest << "\\n";
+                    if (i != 0) { coststr << "\\n"; tilingstr << "\\n";}
                     auto cost = tiling_childs[i].first->cost;
                     auto tiling = tiling_childs[i].second;
-                    suggest << cost << " tiling: " << tiling[0] << " " << tiling[1];
+                    coststr << cost;
+                    tilingstr << "y: " << tiling[0] << " x: " << tiling[1];
                 }
 
                 std::stringstream stream;
                 stream << "{\"type\": \"phase1\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
-                stream << " \"suggest\": \"" << suggest.str() << "\", ";
+                stream << " \"cost\": \"" << coststr.str() << "\", ";
+                stream << " \"tiling\": \"" << tilingstr.str() << "\", ";
                 stream << " \"instruction\": \"";
                 stream << "Choose the tiling of <font color=\'lime\'> Func " << node->func.name();
                 stream << "</font> from (0 - " << suggestions.size() - 1 << ")";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
 
-                int in;
-                std::cin >> in;
-                auto selected = suggestions[in].first;
-                num_children++;
-                accept_child(std::move(selected));
+                // if first in_y was 0, then it means the user is selecting from the suggestions
+                // if it wasn't 0, then the user is manually specifying the tiling size
+                int in_y, in_x;
+                std::cin >> in_y >> in_x;
+                if (in_y == 0) {
+                    auto selected = suggestions[in_x].first;
+                    num_children++;
+                    accept_child(std::move(selected));
+                } else {
+                    std::vector<std::vector<int64_t>> tilings = {{in_y, in_x}};
+                    auto options = make_options_from_tilings(tilings, params, node, pure_size);
+                    auto tiling_childs = make_state_from_options(options, params, num_children, node, dag, cost_model);
+                    if (tiling_childs.size() != 1)
+                        std::cout << "Error! tiling_childs size is not 1" << std::endl;
+                    auto selected = tiling_childs[0].first;
+                    num_children++;
+                    accept_child(std::move(selected));
+                }
             } // should parallelize
         } // End of Phase 1
 
