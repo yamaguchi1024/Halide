@@ -2786,28 +2786,30 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         selected->calculate_cost(dag, params, cost_model, true);
         cost_model->evaluate_costs();
 
-        //selected->root->node->func.print_loop_nest();
-//            std::cout << Halide::Internal::print_loop_nest(outputs) << std::endl;
-        //std::cout << Halide::Internal::print_loop_nest({selected->root->node->func}) << std::endl;
-
-        /*
-        print time here
-        IntrusivePtr<State> temp = selected->make_clone();
-        temp->apply_schedule(dag, params);
+        map<string, Function> env;
+        for (Function f : outputs) {
+            populate_environment(f, env);
+        }
+        // Create a deep-copy of the entire graph of Funcs.
+        vector<Function> copy;
+        std::tie(copy, env) = deep_copy(outputs, env);
+        vector<Pipeline> pipes;
+        for (int i = 0; i < copy.size(); i++) {
+            Func f(copy[0]);
+            Pipeline ptmp(f);
+            pipes.push_back(std::move(ptmp));
+        }
         const clock_t begin = clock();
-        if (i > 2)
-            p.realize(1000, 1000);
+        for (int i = 0; i < copy.size(); i++) {
+            pipes[i].realize();
+        }
         float time =  float(clock() - begin) / CLOCKS_PER_SEC;
-            */
-
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
-        stream << "\"Current Cost: " << selected->cost << "\"}";
-
-        //stream << "{\"type\": \"realize\", \"contents\": ";
-        //stream << "\"Run Time: " << time << "\"}";
-
+        stream << "\"Current Cost: " << selected->cost << "\"}\n";
+        stream << "{\"type\": \"realize\", \"contents\": ";
+        stream << "\"Run Time: " << time << "\"}";
         std::cout << stream.str() << std::endl;
 
         q.clear();
