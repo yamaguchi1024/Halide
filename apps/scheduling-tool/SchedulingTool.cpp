@@ -2208,6 +2208,7 @@ struct State {
                 // auto tilings = generate_tilings(*pure_size, node->dimensions - 1, 2, true);
 
                 // Tiling specification HERE!
+                /*
                 int in_x, in_y;
                 std::stringstream stream;
                 stream << "{\"type\": \"phase1\", ";
@@ -2218,8 +2219,18 @@ struct State {
                 std::cout << stream.str() << std::endl;
 
                 std::cin >> in_x >> in_y;
+                */
 
-                std::vector<std::vector<int64_t>> tilings = {{in_x, in_y}};
+                std::vector<std::vector<int64_t>> tilings;
+                int size_y = (*pure_size)[0];
+                int size_x = (*pure_size)[1];
+                for (int y = 2; y < size_y; y += 2) {
+                    for (int x = 2; x < size_x; x += 2) {
+                        tilings.push_back({y, x});
+                    }
+                }
+
+                std::vector<std::pair<IntrusivePtr<State>, std::vector<int64_t>>> tiling_childs;
 
                 // We could also just parallelize the outer loop entirely
                 std::vector<int64_t> ones;
@@ -2253,6 +2264,15 @@ struct State {
                     for (size_t j = 0; j < pure_size->size(); j++) {
                         t[j] = ((*pure_size)[j] + t[j] - 1) / t[j];
                     }
+
+                    // Delete options with the same tiling size
+                    bool flag = false;
+                    for (const auto& o: options) {
+                        if (o.tiling[0] == t[0] && o.tiling[1] == t[1])
+                            flag = true;
+                    }
+                    if (flag) continue;
+
                     t.swap(o.tiling);
 
                     // Compute max idle cores across the other stages of the Func
@@ -2288,6 +2308,7 @@ struct State {
 
                     options.emplace_back(std::move(o));
                 }
+
                 std::sort(options.begin(), options.end());
 
                 // If none of the options were acceptable, don't
@@ -2340,12 +2361,45 @@ struct State {
                     child->root = new_root;
                     child->num_decisions_made++;
                     if (child->calculate_cost(dag, params, cost_model)) {
-                        num_children++;
-                        accept_child(std::move(child));
+                        cost_model->evaluate_costs();
+                        tiling_childs.push_back(std::make_pair(std::move(child), o.tiling));
                     }
                 }
-            }
-        }
+
+                std::sort(tiling_childs.begin(), tiling_childs.end(),
+                        [](std::pair<IntrusivePtr<State>, std::vector<int64_t>> t1,
+                            std::pair<IntrusivePtr<State>, std::vector<int64_t>> t2) {
+                            return (t1.first->cost < t2.first->cost);
+                        });
+
+                std::vector<std::pair<IntrusivePtr<State>, std::vector<int64_t>>> suggestions;
+                std::stringstream suggest;
+                for (int i = 0; i < tiling_childs.size(); i+=10) {
+                    if (suggestions.size() >= 5) break;
+                    suggestions.push_back(tiling_childs[i]);
+                    if (i != 0) suggest << "\\n";
+                    auto cost = tiling_childs[i].first->cost;
+                    auto tiling = tiling_childs[i].second;
+                    suggest << cost << " tiling: " << tiling[0] << " " << tiling[1];
+                }
+
+                std::stringstream stream;
+                stream << "{\"type\": \"phase1\", ";
+                stream << "\"func\": \"" << node->func.name() << "\",";
+                stream << " \"suggest\": \"" << suggest.str() << "\", ";
+                stream << " \"instruction\": \"";
+                stream << "Choose the tiling of <font color=\'lime\'> Func " << node->func.name();
+                stream << "</font> from (0 - " << suggestions.size() - 1 << ")";
+                stream << "\"}";
+                std::cout << stream.str() << std::endl;
+
+                int in;
+                std::cin >> in;
+                auto selected = suggestions[in].first;
+                num_children++;
+                accept_child(std::move(selected));
+            } // should parallelize
+        } // End of Phase 1
 
         if (num_children == 0) {
             debug(0) << "Warning: Found no legal way to schedule "
@@ -2354,7 +2408,7 @@ struct State {
             // children. Carry on.
         }
 
-    }
+    } // end of function
 
     string schedule_source;
 
