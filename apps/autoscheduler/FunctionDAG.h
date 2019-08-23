@@ -1491,19 +1491,30 @@ struct FunctionDAG {
         }
     }
 
+    static std::string erase_update(std::string fname) {
+        size_t pos = fname.find(".update");
+        if (pos != std::string::npos)
+            fname.erase(pos, std::string::npos);
+        return fname;
+    }
+
     void dump_simple() const {
         std::stringstream stream;
         stream << "{\"type\":\"dag\", \"nodes\": [";
         //for (const Node &n : nodes) {
         for (int i = 0; i < nodes.size(); i++) {
-            stream << "\"" << nodes[i].func.name() << "\" ";
+            std::string fname = nodes[i].func.name();
+            stream << "\"" << fname << "\" ";
             if (i != nodes.size() - 1)
                 stream << ", ";
         }
         stream << "], \"edges\": [";
         //for (const Edge &e : edges) {
         for (int i = 0; i < edges.size(); i++) {
-            stream << "[ \"" << edges[i].producer->func.name() << "\", \"" << edges[i].consumer->name << "\"] ";
+            std::string pname = erase_update(edges[i].producer->func.name());
+            std::string cname = erase_update(edges[i].consumer->name);
+
+            stream << "[ \"" << pname << "\", \"" << cname<< "\"] ";
             if (i != edges.size() - 1)
                 stream << ", ";
         }
