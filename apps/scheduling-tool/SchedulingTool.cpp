@@ -1835,6 +1835,9 @@ struct State {
     IntrusivePtr<const LoopNest> root;
     IntrusivePtr<const State> parent;
     double cost = 0;
+    double load_cost = 0;
+    double store_cost = 0;
+    double compute_cost = 0;
     int num_decisions_made = 0;
     bool penalized = false;
 
@@ -2001,7 +2004,7 @@ struct State {
         // evaluate it until we call evaluate_costs (or if it runs out
         // of internal buffer space), so that the evaluations can be
         // batched.
-        cost_model->enqueue(num_stages, &schedule_features, &cost);
+        cost_model->enqueue(num_stages, &schedule_features, &cost, &load_cost, &store_cost, &compute_cost);
 
         // index of current stage whose features we are reading
         int stage = 0;
@@ -2277,6 +2280,9 @@ struct State {
                 stream << "{\"type\": \"line_cost\", ";
                 stream << " \"linenum\": \"" << i << "\"";
                 stream << ", \"costs\": \"" << child->cost;
+                stream << "\", \"load_costs\": \"" << child->load_cost;
+                stream << "\", \"store_costs\": \"" << child->store_cost;
+                stream << "\", \"compute_costs\": \"" << child->compute_cost;
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
             }
@@ -2802,7 +2808,11 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
-        stream << "\"Current Cost: " << selected->cost << "\"}\n";
+        stream << "\"Current Cost: " << selected->cost;
+        stream << "\", \"load_costs\": \"" << selected->load_cost;
+        stream << "\", \"store_costs\": \"" << selected->store_cost;
+        stream << "\", \"compute_costs\": \"" << selected->compute_cost << "\"}\n";
+
         stream << "{\"type\": \"realize\", \"contents\": ";
         stream << "\"Run Time: " << time << "\"}";
         std::cout << stream.str() << std::endl;

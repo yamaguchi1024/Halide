@@ -44,8 +44,11 @@ bool ends_with(const std::string &str, const std::string &suffix) {
 
 class DefaultCostModel : public CostModel {
     Weights weights;
-    Buffer<float> schedule_feat_queue, pipeline_feat_queue, costs;
+    Buffer<float> schedule_feat_queue, pipeline_feat_queue, costs, loads, stores, computes;
     Buffer<double *> cost_ptrs;
+    Buffer<double *> load_ptrs;
+    Buffer<double *> store_ptrs;
+    Buffer<double *> compute_ptrs;
     int cursor, num_stages, num_cores;
 
     const std::string weights_in_path, weights_out_path;
@@ -69,7 +72,7 @@ class DefaultCostModel : public CostModel {
         num_cores = n;
     }
 
-    void enqueue(int ns, Buffer<float> *schedule_feats, double *cost_ptr) override {
+    void enqueue(int ns, Buffer<float> *schedule_feats, double *cost_ptr, double *load_ptr, double *store_ptr, double *compute_ptr) override {
         num_stages = ns;
 
         // We know the most stages that will ever be enqueued from the schedule features
@@ -90,7 +93,14 @@ class DefaultCostModel : public CostModel {
             if (!costs.data()) {
                 assert(!cost_ptrs.data());
                 costs = Buffer<float>(batch_size);
+                loads = Buffer<float>(batch_size);
+                stores = Buffer<float>(batch_size);
+                computes = Buffer<float>(batch_size);
+
                 cost_ptrs = Buffer<double *>(batch_size);
+                load_ptrs = Buffer<double *>(batch_size);
+                store_ptrs = Buffer<double *>(batch_size);
+                compute_ptrs = Buffer<double *>(batch_size);
             }
         }
 
@@ -100,6 +110,10 @@ class DefaultCostModel : public CostModel {
 
         *schedule_feats = schedule_feat_queue.sliced(0, cursor);
         cost_ptrs(cursor) = cost_ptr;
+
+        load_ptrs(cursor) = load_ptr;
+        store_ptrs(cursor) = store_ptr;
+        compute_ptrs(cursor) = compute_ptr;
 
         cursor++;
     }
@@ -153,6 +167,10 @@ class DefaultCostModel : public CostModel {
             }
         }
 
+        Buffer<float> load = loads.cropped(0, 0, cursor);
+        Buffer<float> store = stores.cropped(0, 0, cursor);
+        Buffer<float> compute = computes.cropped(0, 0, cursor);
+
         train_cost_model(num_stages,
                          cursor,
                          num_cores,
@@ -168,12 +186,18 @@ class DefaultCostModel : public CostModel {
                          head2_filter_update, head2_bias_update,
                          conv1_filter_update, conv1_bias_update,
                          dst,
-                         loss);
+                         loss,
+                         load,
+                         store,
+                         compute);
 
         bool any_nans = false;
         for (int i = 0; i < cursor; i++) {
             assert(cost_ptrs(i));
             *(cost_ptrs(i)) = dst(i);
+            *(load_ptrs(i)) = load(i);
+            *(store_ptrs(i)) = store(i);
+            *(compute_ptrs(i)) = compute(i);
             if (std::isnan(dst(i))) {
                 any_nans = true;
                 aslog(0) << "Prediction " << i << " is NaN. True runtime is " << true_runtimes(i) << "\n";
@@ -219,6 +243,10 @@ class DefaultCostModel : public CostModel {
 
         auto loss = Buffer<float>::make_scalar();
 
+        Buffer<float> load = loads.cropped(0, 0, cursor);
+        Buffer<float> store = stores.cropped(0, 0, cursor);
+        Buffer<float> compute = computes.cropped(0, 0, cursor);
+
         cost_model(num_stages,
                    cursor,
                    num_cores,
@@ -228,11 +256,17 @@ class DefaultCostModel : public CostModel {
                    weights.head2_filter, weights.head2_bias,
                    weights.conv1_filter, weights.conv1_bias,
                    0.0f, 0, 0, nullptr,
-                   dst, loss);
+                   dst, loss, load, store, compute);
 
         for (int i = 0; i < cursor; i++) {
             assert(cost_ptrs(i));
             *(cost_ptrs(i)) = dst(i);
+        }
+
+        for (int i = 0; i < cursor; i++) {
+            *(load_ptrs(i)) = load(i);
+            *(store_ptrs(i)) = store(i);
+            *(compute_ptrs(i)) = compute(i);
         }
 
         cursor = 0;
