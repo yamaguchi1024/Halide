@@ -2379,14 +2379,21 @@ struct State {
 
                 std::vector<std::pair<IntrusivePtr<State>, std::vector<int64_t>>> suggestions;
                 std::stringstream coststr;
+                std::stringstream loadcoststr;
+                std::stringstream storecoststr;
+                std::stringstream computecoststr;
                 std::stringstream tilingstr;
                 for (int i = 0; i < tiling_childs.size(); i+=10) {
                     if (suggestions.size() >= 5) break;
                     suggestions.push_back(tiling_childs[i]);
-                    if (i != 0) { coststr << "\\n"; tilingstr << "\\n";}
+                    if (i != 0) { coststr << "\\n"; loadcoststr << "\\n"; 
+                        storecoststr << "\\n"; computecoststr << "\\n"; tilingstr << "\\n";}
                     auto cost = tiling_childs[i].first->cost;
                     auto tiling = tiling_childs[i].second;
                     coststr << cost;
+                    loadcoststr << tiling_childs[i].first->load_cost;
+                    storecoststr << tiling_childs[i].first->store_cost;
+                    computecoststr << tiling_childs[i].first->compute_cost;
                     tilingstr << "y: " << tiling[0] << " x: " << tiling[1];
                 }
 
@@ -2394,6 +2401,9 @@ struct State {
                 stream << "{\"type\": \"phase1\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
                 stream << " \"cost\": \"" << coststr.str() << "\", ";
+                stream << " \"load_costs\": \"" << loadcoststr.str() << "\", ";
+                stream << " \"store_costs\": \"" << storecoststr.str() << "\", ";
+                stream << " \"compute_costs\": \"" << computecoststr.str() << "\", ";
                 stream << " \"tiling\": \"" << tilingstr.str() << "\", ";
                 stream << " \"instruction\": \"";
                 stream << "Choose the tiling of <font color=\'lime\'> Func " << node->func.name();
