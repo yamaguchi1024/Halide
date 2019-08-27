@@ -2774,25 +2774,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         // Drop the other states unconsidered.
         pending.clear();
 
-        /*
-        debug(0) << "\n--------------------\n";
-        debug(0) << "Select a schedule:\n";
-        for (int choice_label = (int)q.size() - 1; choice_label >= 0; choice_label--) {
-            auto state = q[choice_label];
-            debug(0) << "\n[" << choice_label << "]:\n";
-            state->calculate_cost(dag, params, cost_model, true);
-        }
-        cost_model->evaluate_costs();
-
-        // Select next partial schedule to expand.
-        int selection = -1;
-        while (selection < 0 || selection >= (int)q.size()) {
-            debug(0) << "\nEnter selection: ";
-            std::cin >> selection;
-        }
-
-        auto selected = q[selection];
-        */
         auto selected = q[0];
         selected->calculate_cost(dag, params, cost_model, true);
         cost_model->evaluate_costs();
@@ -2870,7 +2851,10 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
 
     std::stringstream stream;
     stream << "{\"type\": \"cost\", \"contents\": ";
-    stream << "\"Final Cost: " << best->cost << "\"}";
+    stream << "\"Final Cost: " << best->cost;
+    stream << "\", \"load_costs\": \"" << best->load_cost;
+    stream << "\", \"store_costs\": \"" << best->store_cost;
+    stream << "\", \"compute_costs\": \"" << best->compute_cost << "\"}";
     std::cout << stream.str() << std::endl;
 
     return best;
