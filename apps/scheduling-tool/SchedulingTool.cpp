@@ -2238,7 +2238,9 @@ struct State {
         // Dump the current schedule HERE!
         if (root->children.size() != 0) {
             std::stringstream stream;
-            stream << "{\"type\": \"schedule\", \"contents\": [";
+            stream << "{\"type\": \"schedule\", \"phase\": \"" << phase << "\", ";
+            stream << "\"func\": \"" << node->func.name() << "\",";
+            stream << "\"contents\": [";
             root->dump_one("", stream);
             stream << "]}";
             std::cout << stream.str() << std::endl;
