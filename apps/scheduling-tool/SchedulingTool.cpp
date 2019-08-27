@@ -2689,6 +2689,41 @@ void configure_pipeline_features(const FunctionDAG &dag,
     cost_model->set_pipeline_features(pipeline_features, params.parallelism);
 }
 
+clock_t realize_output(FunctionDAG& dag, vector<Function> outputs) {
+    std::vector<Buffer<float>> buffs;
+    for (const auto& n: dag.nodes) {
+        if (!n.is_output) continue;
+        auto bs = n.estimated_region_required;
+        std::vector<std::pair<int64_t, int64_t>> vec;
+        for (const auto &b: bs) {
+            vec.push_back(std::make_pair(b.min(), b.max()));
+        }
+        Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first);
+        buf.set_min(vec[0].first, vec[1].first);
+        buffs.push_back(buf);
+    }
+
+    map<string, Function> env;
+    for (Function f : outputs) {
+        populate_environment(f, env);
+    }
+    // Create a deep-copy of the entire graph of Funcs.
+    vector<Function> copy;
+    std::tie(copy, env) = deep_copy(outputs, env);
+    vector<Pipeline> pipes;
+    for (int i = 0; i < copy.size(); i++) {
+        Func f(copy[0]);
+        Pipeline ptmp(f);
+        pipes.push_back(std::move(ptmp));
+    }
+    const clock_t begin = clock();
+    for (int i = 0; i < copy.size(); i++) {
+        pipes[i].realize(buffs[i]);
+    }
+    float time =  float(clock() - begin) / CLOCKS_PER_SEC;
+    return time;
+};
+
 // A single pass of coarse-to-fine beam search.
 IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                           vector<Function> outputs,
@@ -2774,28 +2809,12 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         // Drop the other states unconsidered.
         pending.clear();
 
+
         auto selected = q[0];
         selected->calculate_cost(dag, params, cost_model, true);
         cost_model->evaluate_costs();
 
-        map<string, Function> env;
-        for (Function f : outputs) {
-            populate_environment(f, env);
-        }
-        // Create a deep-copy of the entire graph of Funcs.
-        vector<Function> copy;
-        std::tie(copy, env) = deep_copy(outputs, env);
-        vector<Pipeline> pipes;
-        for (int i = 0; i < copy.size(); i++) {
-            Func f(copy[0]);
-            Pipeline ptmp(f);
-            pipes.push_back(std::move(ptmp));
-        }
-        const clock_t begin = clock();
-        for (int i = 0; i < copy.size(); i++) {
-            pipes[i].realize();
-        }
-        float time =  float(clock() - begin) / CLOCKS_PER_SEC;
+        auto time = realize_output(dag, outputs);
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
@@ -2918,9 +2937,7 @@ void generate_schedule(const std::vector<Function> &outputs,
     // memo: make Halide schedule here
     optimal->apply_schedule(dag, params);
 
-    const clock_t begin = clock();
-    p.realize(1000, 1000);
-    float time =  float(clock() - begin) / CLOCKS_PER_SEC;
+    auto time = realize_output(dag, outputs);
 
     std::stringstream stream;
     stream << "{\"type\": \"realize\", \"contents\": ";

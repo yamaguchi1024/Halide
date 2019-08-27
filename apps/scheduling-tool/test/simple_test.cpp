@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
         Func f("f"), g("g"), h("h");
         f(x, y) = (x + y) * (x + y);
         g(x, y) = f(x, y) * 2 + 1;
-        h(x, y) = g(x, y) * 2 + 1;
+        h(x, y) = g(x, y) * 2.0f + 1.0f;
 
         h.set_estimate(x, 0, 1000).set_estimate(y, 0, 1000);
 
