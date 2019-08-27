@@ -2696,7 +2696,7 @@ void configure_pipeline_features(const FunctionDAG &dag,
     cost_model->set_pipeline_features(pipeline_features, params.parallelism);
 }
 
-clock_t realize_output(FunctionDAG& dag, vector<Function> outputs) {
+float realize_output(FunctionDAG& dag, vector<Function> outputs) {
     std::vector<Buffer<float>> buffs;
     for (const auto& n: dag.nodes) {
         if (!n.is_output) continue;
@@ -2735,6 +2735,7 @@ clock_t realize_output(FunctionDAG& dag, vector<Function> outputs) {
     for (int i = 0; i < copy.size(); i++) {
         pipes[i].realize(buffs[i]);
     }
+
     float time =  float(clock() - begin) / CLOCKS_PER_SEC;
     return time;
 };
