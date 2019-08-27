@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     idx(x) = x * (10000 - x);
 
     Func out("out");
-    out(x) = lut(clamp(idx(x), 0, 100000));
+    out(x) = Halide::cast<float>(lut(clamp(idx(x), 0, 100000)));
 
     out.set_estimate(x, 0, 10);
 

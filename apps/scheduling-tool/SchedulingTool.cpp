@@ -2698,9 +2698,17 @@ clock_t realize_output(FunctionDAG& dag, vector<Function> outputs) {
         for (const auto &b: bs) {
             vec.push_back(std::make_pair(b.min(), b.max()));
         }
-        Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first);
-        buf.set_min(vec[0].first, vec[1].first);
-        buffs.push_back(buf);
+
+        if (vec.size() == 2) {
+            Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first);
+            buf.set_min(vec[0].first, vec[1].first);
+            buffs.push_back(buf);
+        }
+        else if (vec.size() == 1) {
+            Buffer<float> buf(vec[0].second - vec[0].first);
+            buf.set_min(vec[0].first);
+            buffs.push_back(buf);
+        }
     }
 
     map<string, Function> env;
