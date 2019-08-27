@@ -1122,8 +1122,11 @@ struct LoopNest {
         }
         stream << "[";
 
+        if (!is_root())
+            stream << "\"?" << node->func.name() << "?";
+
         if (tileable || innermost || parallel) {
-            stream << "\"" + prefix + "(";
+            stream << prefix + "(";
             if (tileable) {
                 stream << "tileable";
                 if (innermost || parallel)
@@ -1153,8 +1156,10 @@ struct LoopNest {
 
         for (auto p : store_at) {
             if (stream.str().find("realize") != std::string::npos)
-                stream << ",";
-            stream << "\"" << prefix << "realize: " << p->func.name() << "\"";
+                stream << ", \"";
+            else
+                stream << "\"?" << p->func.name() << "?";
+            stream << prefix << "realize: " << p->func.name() << "\"";
         }
 
         stream << "]";
