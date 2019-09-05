@@ -1398,7 +1398,8 @@ struct LoopNest {
             int l = stage->loop[i].pure_dim;
 
             int64_t outer_extent;
-            if (l >= 0) {
+            // FIXME! Enable to tile rgb channel as well.
+            if (l >= 0 && l < 2) {
                 outer_extent = tiling[l];
             } else {
                 // RVars are moved inwards
@@ -2145,14 +2146,6 @@ struct State {
             Option o;
             o.entire = (i == tilings.size() - 1);
 
-            // Delete options with the same tiling size
-            bool flag = false;
-            for (const auto& o: options) {
-                if (o.tiling[0] == t[0] && o.tiling[1] == t[1])
-                    flag = true;
-            }
-            if (flag) continue;
-
             t.swap(o.tiling);
 
             // Compute max idle cores across the other stages of the Func
@@ -2706,7 +2699,12 @@ float realize_output(FunctionDAG& dag, vector<Function> outputs) {
             vec.push_back(std::make_pair(b.min(), b.max()));
         }
 
-        if (vec.size() == 2) {
+        // FIXME: Extremely ugly
+        if (vec.size() == 3) {
+            Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first, vec[2].second - vec[2].first);
+            buf.set_min(vec[0].first, vec[1].first, vec[2].first);
+            buffs.push_back(buf);
+        } else if (vec.size() == 2) {
             Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first);
             buf.set_min(vec[0].first, vec[1].first);
             buffs.push_back(buf);
