@@ -2,6 +2,7 @@
 //
 #include "Halide.h"
 #include "halide_image_io.h"
+#include "halide_benchmark.h"
 #include <iostream>
 #include <dlfcn.h>
 
@@ -21,11 +22,13 @@ int main(int argc, char **argv) {
     // Define a 7x7 Gaussian Blur with a repeat-edge boundary condition.
     float sigma = 1.5f;
 
+    // algorithm
     Var x, y, c;
     Func kernel("kernel");
     kernel(x) = exp(-x*x/(2*sigma*sigma)) / (sqrtf(2*M_PI)*sigma);
 
-    Func in_bounded = BoundaryConditions::repeat_edge(input);
+    Func in_bounded("in_bounded");
+    in_bounded = BoundaryConditions::repeat_edge(input);
 
     Func gray("gray");
     gray(x, y) = 0.299f * in_bounded(x, y, 0) + 0.587f * in_bounded(x, y, 1) +
@@ -51,17 +54,21 @@ int main(int argc, char **argv) {
 
     Func unsharp("unsharp");
     unsharp(x, y, c) = ratio(x, y) * input(x, y, c);
+    
+    // end algorithm
 
     unsharp.set_estimate(x, 0, input.width()).set_estimate(y, 0, input.height()).set_estimate(c, 0, input.channels());
     Pipeline(unsharp).auto_schedule(target, params);
 
-    /*
     Func output("output");
     output(x, y, c)  = cast<uint8_t>(unsharp(x, y, c));
     Buffer<uint8_t> buf(input.width(), input.height(), input.channels());
-    output.realize(buf);
-    Halide::Tools::save_image(buf, "neko.png");
-    */
+    double t = Halide::Tools::benchmark(3, 10, [&]() {
+        output.realize(buf);
+    });
+
+    std::cerr << "RT from test: " << t*1000 << std::endl;
+    Halide::Tools::save_image(buf, "unsharp_out.png");
 
     return 0;
 }
