@@ -203,6 +203,26 @@ struct LoopNest {
         vectorized_loop_index = n.vectorized_loop_index;
     };
 
+    void deep_copy(const LoopNest &n) {
+        size = n.size;
+        for (int i = 0; i < n.children.size(); i++) {
+            LoopNest *nl = new LoopNest;
+            nl->deep_copy(*n.children[i]);
+            children.push_back(nl);
+        }
+
+        inlined = n.inlined;
+        store_at = n.store_at;
+        bounds = n.bounds;
+        node = n.node;
+        stage = n.stage;
+        innermost = n.innermost;
+        tileable = n.tileable;
+        parallel = n.parallel;
+        vector_dim = n.vector_dim;
+        vectorized_loop_index = n.vectorized_loop_index;
+    };
+
     static void hash_combine(uint64_t &h, uint64_t next) {
         // From boost
         h ^= (next + 0x9e3779b9 + (h<<6) + (h>>2));
@@ -2060,6 +2080,17 @@ struct State {
         return s;
     }
 
+    IntrusivePtr<State> make_copy() const {
+        State *s = new State;
+        s->parent = parent;
+        LoopNest *new_root = new LoopNest;
+        new_root->deep_copy(*root);
+        s->root = new_root;
+        s->cost = cost;
+        s->num_decisions_made = num_decisions_made;
+        return s;
+    }
+
     // Sort / filter the options
     struct Option {
         vector<int64_t> tiling;
@@ -2188,6 +2219,7 @@ struct State {
                            CostModel *cost_model,
                            std::function<void(IntrusivePtr<State> &&)> &accept_child) const {
         internal_assert(root.defined() && root->is_root());
+        static std::vector<IntrusivePtr<State>> choice_mem;
 
         // return if it already reached the end
         if (num_decisions_made == 2*(int)dag.nodes.size()) {
@@ -2274,7 +2306,6 @@ struct State {
 
                 child->calculate_cost(dag, params, cost_model, true);
                 cost_model->evaluate_costs();
-                //std::cout << i << " " << child->cost << std::endl;;
 
                 std::stringstream stream;
                 stream << "{\"type\": \"line_cost\", ";
@@ -2289,7 +2320,7 @@ struct State {
 
             // Specify the granularity here!!
             // FIXME: I think 0~something is wrong. We should read tile_options.second.
-            int gra;
+            int gra, tmp_x;
             if (root->children.size() != 0) {
                 std::stringstream stream;
                 stream << "{\"type\": \"phase0\", ";
@@ -2300,18 +2331,30 @@ struct State {
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
 
-                std::cin >> gra;
+                std::cin >> gra >> tmp_x;
             } else {
                 gra = 0;
             }
 
-            IntrusivePtr<const LoopNest> ln = tile_options[gra].first;
-            auto child = make_child();
-            child->root = std::move(ln);
-            child->num_decisions_made++;
+            if (gra == -1) {
+                choice_mem.pop_back();
+                auto child = choice_mem[choice_mem.size() - 1];
 
-            num_children++;
-            accept_child(std::move(child));
+                num_children++;
+                accept_child(std::move(child));
+                return;
+            } else {
+                IntrusivePtr<const LoopNest> ln = tile_options[gra].first;
+                auto child = make_child();
+                child->root = std::move(ln);
+                child->num_decisions_made++;
+
+                auto copy = child->make_copy();
+                choice_mem.push_back(copy);
+
+                num_children++;
+                accept_child(std::move(child));
+            }
         } else {
             // phase == 1の時はtilingしかやってないのかチェック
             // We are parallelizing the loops of the func we just injected a realization for.
@@ -2417,8 +2460,17 @@ struct State {
                 std::cin >> in_y >> in_x;
                 if (in_y == 0) {
                     auto selected = suggestions[in_x].first;
+                    auto copy = selected->make_copy();
+                    choice_mem.push_back(copy);
+
                     num_children++;
                     accept_child(std::move(selected));
+                } else if (in_y == -1 && in_x == -1) {
+                    choice_mem.pop_back();
+                    auto child = choice_mem[choice_mem.size() - 1];
+
+                    num_children++;
+                    accept_child(std::move(child));
                 } else {
                     std::vector<std::vector<int64_t>> tilings = {{in_y, in_x}};
                     auto options = make_options_from_tilings(tilings, params, node, pure_size);
@@ -2426,6 +2478,8 @@ struct State {
                     if (tiling_childs.size() != 1)
                         std::cout << "Error! tiling_childs size is not 1" << std::endl;
                     auto selected = tiling_childs[0].first;
+                    auto copy = selected->make_copy();
+                    choice_mem.push_back(copy);
                     num_children++;
                     accept_child(std::move(selected));
                 }
@@ -2794,27 +2848,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             // must be the best, because we're pulling off a
             // priority queue.
             auto best = state;
-
-            // Bless the reasonable stuff in the beam as
-            // permissible states to visit again. We define
-            // reasonable as having a cost no more than 20% higher
-            // than the cost of the best thing. Only do this if
-            // there are more coarse-to-fine passes yet to come.
-            if (pass_idx + 1 < num_passes) {
-                int blessed = 0;
-                while (state->cost <= 1.2 * best->cost && blessed < beam_size) {
-                    const State *s = state.get();
-                    while (s) {
-                        uint64_t h1 = s->structural_hash(pass_idx);
-                        permitted_hashes.insert(h1);
-                        s = s->parent.get();
-                    }
-                    if (pending.empty()) break;
-                    state = pending.pop();
-                    blessed++;
-                }
-            }
-
             return best;
         }
 
@@ -2823,8 +2856,9 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         // Drop the other states unconsidered.
         pending.clear();
 
+        // If q was empty, it means that we should roll back to the previous state.
+        IntrusivePtr<State> selected = q[0];
 
-        auto selected = q[0];
         selected->calculate_cost(dag, params, cost_model, true);
         cost_model->evaluate_costs();
 
