@@ -1167,7 +1167,8 @@ struct LoopNest {
                     stream << ", \"" + prefix + "(vectorized)\"";
                 }
 
-                std::string xy = (i == 0) ? "y" : "x";
+                std::vector<std::string> dims = {"y", "x", "c"};
+                std::string xy = dims[i];
                 stream << ", \"" + prefix + "for " + node->func.name() + "." + xy + " in 0..";
                 stream << size[i];
                 stream <<  "\"";
