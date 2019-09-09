@@ -2230,7 +2230,8 @@ struct State {
                            CostModel *cost_model,
                            std::function<void(IntrusivePtr<State> &&)> &accept_child) const {
         internal_assert(root.defined() && root->is_root());
-        static std::vector<IntrusivePtr<State>> choice_mem;
+        static std::vector<IntrusivePtr<State>> choice_undo;
+        static std::vector<IntrusivePtr<State>> choice_redo;
 
         // return if it already reached the end
         if (num_decisions_made == 2*(int)dag.nodes.size()) {
@@ -2347,9 +2348,20 @@ struct State {
                 gra = 0;
             }
 
+            // undo here!
             if (gra == -1) {
-                choice_mem.pop_back();
-                auto child = choice_mem[choice_mem.size() - 1];
+                choice_redo.push_back(choice_undo[choice_undo.size() - 1]);
+                choice_undo.pop_back();
+                auto child = choice_undo[choice_undo.size() - 1];
+
+                num_children++;
+                accept_child(std::move(child));
+                return;
+            // redo here!
+            } else if (gra == -2) {
+                auto child = choice_redo[choice_redo.size() - 1];
+                choice_undo.push_back(child);
+                choice_redo.pop_back();
 
                 num_children++;
                 accept_child(std::move(child));
@@ -2361,7 +2373,7 @@ struct State {
                 child->num_decisions_made++;
 
                 auto copy = child->make_copy();
-                choice_mem.push_back(copy);
+                choice_undo.push_back(copy);
 
                 num_children++;
                 accept_child(std::move(child));
@@ -2472,16 +2484,27 @@ struct State {
                 if (in_y == 0) {
                     auto selected = suggestions[in_x].first;
                     auto copy = selected->make_copy();
-                    choice_mem.push_back(copy);
+                    choice_undo.push_back(copy);
 
                     num_children++;
                     accept_child(std::move(selected));
+                // undo here!
                 } else if (in_y == -1 && in_x == -1) {
-                    choice_mem.pop_back();
-                    auto child = choice_mem[choice_mem.size() - 1];
+                    choice_redo.push_back(choice_undo[choice_undo.size() - 1]);
+                    choice_undo.pop_back();
+                    auto child = choice_undo[choice_undo.size() - 1];
 
                     num_children++;
                     accept_child(std::move(child));
+                // redo here!
+                } else if (in_y == -2 && in_x == -2) {
+                    auto child = choice_redo[choice_redo.size() - 1];
+                    choice_undo.push_back(child);
+                    choice_redo.pop_back();
+
+                    num_children++;
+                    accept_child(std::move(child));
+                    return;
                 } else {
                     std::vector<std::vector<int64_t>> tilings = {{in_y, in_x}};
                     auto options = make_options_from_tilings(tilings, params, node, pure_size);
@@ -2490,7 +2513,7 @@ struct State {
                         std::cout << "Error! tiling_childs size is not 1" << std::endl;
                     auto selected = tiling_childs[0].first;
                     auto copy = selected->make_copy();
-                    choice_mem.push_back(copy);
+                    choice_undo.push_back(copy);
                     num_children++;
                     accept_child(std::move(selected));
                 }
