@@ -3028,7 +3028,6 @@ void generate_schedule(const std::vector<Function> &outputs,
 
     string schedule_file = get_env_variable("HL_SCHEDULE_FILE");
     if (!schedule_file.empty()) {
-        debug(0) << "Writing schedule to " << schedule_file << "...\n";
         std::ofstream f(schedule_file);
         f << "// --- BEGIN machine-generated schedule\n"
           << optimal->schedule_source
