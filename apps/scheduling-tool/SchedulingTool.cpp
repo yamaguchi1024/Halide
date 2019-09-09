@@ -49,6 +49,16 @@ bool may_subtile() {
     return b;
 }
 
+int normalize_features(double d) {
+    return int(std::floor(d/1000000));
+}
+
+int normalize_maincost(double d) {
+    if (d < 1000000)
+        return int(std::floor(d));
+    else return 10000000;
+}
+
 // Given a multi-dimensional box of dimensionality d, generate a list
 // of candidate tile sizes for it, logarithmically spacing the sizes
 // using the given factor. If 'allow_splits' is false, every dimension
@@ -2311,10 +2321,10 @@ struct State {
                 std::stringstream stream;
                 stream << "{\"type\": \"line_cost\", ";
                 stream << " \"linenum\": \"" << i << "\"";
-                stream << ", \"costs\": \"" << child->cost;
-                stream << "\", \"load_costs\": \"" << child->load_cost;
-                stream << "\", \"store_costs\": \"" << child->store_cost;
-                stream << "\", \"compute_costs\": \"" << child->compute_cost;
+                stream << ", \"costs\": \"" << normalize_maincost(child->cost);
+                stream << "\", \"load_costs\": \"" << normalize_features(child->load_cost);
+                stream << "\", \"store_costs\": \"" << normalize_features(child->store_cost);
+                stream << "\", \"compute_costs\": \"" << normalize_features(child->compute_cost);
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
             }
@@ -2434,10 +2444,10 @@ struct State {
                         storecoststr << "\\n"; computecoststr << "\\n"; tilingstr << "\\n";}
                     auto cost = tiling_childs[i].first->cost;
                     auto tiling = tiling_childs[i].second;
-                    coststr << cost;
-                    loadcoststr << tiling_childs[i].first->load_cost;
-                    storecoststr << tiling_childs[i].first->store_cost;
-                    computecoststr << tiling_childs[i].first->compute_cost;
+                    coststr << normalize_maincost(cost);
+                    loadcoststr << normalize_features(tiling_childs[i].first->load_cost);
+                    storecoststr << normalize_features(tiling_childs[i].first->store_cost);
+                    computecoststr << normalize_features(tiling_childs[i].first->compute_cost);
                     tilingstr << "y: " << tiling[0] << " x: " << tiling[1];
                 }
 
@@ -2867,10 +2877,10 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
-        stream << "\"Current Cost: " << selected->cost;
-        stream << "\", \"load_costs\": \"" << selected->load_cost;
-        stream << "\", \"store_costs\": \"" << selected->store_cost;
-        stream << "\", \"compute_costs\": \"" << selected->compute_cost << "\"}\n";
+        stream << "\"Current Cost: " << normalize_maincost(selected->cost);
+        stream << "\", \"load_costs\": \"" << normalize_features(selected->load_cost);
+        stream << "\", \"store_costs\": \"" << normalize_features(selected->store_cost);
+        stream << "\", \"compute_costs\": \"" << normalize_features(selected->compute_cost) << "\"}\n";
 
         stream << "{\"type\": \"realize\", \"contents\": ";
         stream << "\"Run Time: " << time << "\"}";
@@ -2919,10 +2929,10 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
 
     std::stringstream stream;
     stream << "{\"type\": \"cost\", \"contents\": ";
-    stream << "\"Final Cost: " << best->cost;
-    stream << "\", \"load_costs\": \"" << best->load_cost;
-    stream << "\", \"store_costs\": \"" << best->store_cost;
-    stream << "\", \"compute_costs\": \"" << best->compute_cost << "\"}";
+    stream << "\"Final Cost: " << normalize_maincost(best->cost);
+    stream << "\", \"load_costs\": \"" << normalize_features(best->load_cost);
+    stream << "\", \"store_costs\": \"" << normalize_features(best->store_cost);
+    stream << "\", \"compute_costs\": \"" << normalize_features(best->compute_cost) << "\"}";
     std::cout << stream.str() << std::endl;
 
     return best;
