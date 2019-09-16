@@ -35,6 +35,55 @@ using std::map;
 using std::set;
 using std::pair;
 
+float realize_output(FunctionDAG& dag, vector<Function> outputs) {
+    std::vector<Buffer<float>> buffs;
+    for (const auto& n: dag.nodes) {
+        if (!n.is_output) continue;
+        auto bs = n.estimated_region_required;
+        std::vector<std::pair<int64_t, int64_t>> vec;
+        for (const auto &b: bs) {
+            vec.push_back(std::make_pair(b.min(), b.max()));
+        }
+
+        // FIXME: Extremely ugly
+        if (vec.size() == 3) {
+            Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first, vec[2].second - vec[2].first);
+            buf.set_min(vec[0].first, vec[1].first, vec[2].first);
+            buffs.push_back(buf);
+        } else if (vec.size() == 2) {
+            Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first);
+            buf.set_min(vec[0].first, vec[1].first);
+            buffs.push_back(buf);
+        }
+        else if (vec.size() == 1) {
+            Buffer<float> buf(vec[0].second - vec[0].first);
+            buf.set_min(vec[0].first);
+            buffs.push_back(buf);
+        }
+    }
+
+    map<string, Function> env;
+    for (Function f : outputs) {
+        populate_environment(f, env);
+    }
+    // Create a deep-copy of the entire graph of Funcs.
+    vector<Function> copy;
+    std::tie(copy, env) = deep_copy(outputs, env);
+    vector<Pipeline> pipes;
+    for (int i = 0; i < copy.size(); i++) {
+        Func f(copy[0]);
+        Pipeline ptmp(f);
+        pipes.push_back(std::move(ptmp));
+    }
+    const clock_t begin = clock();
+    for (int i = 0; i < copy.size(); i++) {
+        pipes[i].realize(buffs[i]);
+    }
+
+    float time =  float(clock() - begin) / CLOCKS_PER_SEC;
+    return time;
+};
+
 // Get the HL_NO_SUBTILING environment variable. Purpose described above.
 bool get_may_subtile() {
     string no_subtiling_str = get_env_variable("HL_NO_SUBTILING");
@@ -2225,10 +2274,11 @@ struct State {
     }
 
     // Generate the successor states to this state
-    void generate_children(const FunctionDAG &dag,
+    void generate_children(FunctionDAG &dag,
                            const MachineParams &params,
                            CostModel *cost_model,
-                           std::function<void(IntrusivePtr<State> &&)> &accept_child) const {
+                           std::function<void(IntrusivePtr<State> &&)> &accept_child,
+                           vector<Function> outputs) const {
         internal_assert(root.defined() && root->is_root());
         static std::vector<IntrusivePtr<State>> choice_undo;
         static std::vector<IntrusivePtr<State>> choice_redo;
@@ -2319,9 +2369,12 @@ struct State {
                 child->calculate_cost(dag, params, cost_model, true);
                 cost_model->evaluate_costs();
 
+                float time = realize_output(dag, outputs);
+
                 std::stringstream stream;
                 stream << "{\"type\": \"line_cost\", ";
                 stream << " \"linenum\": \"" << i << "\"";
+                stream << ", \"runtime\": \"" << time << "\"";
                 stream << ", \"costs\": \"" << normalize_maincost(child->cost);
                 stream << "\", \"load_costs\": \"" << normalize_features(child->load_cost);
                 stream << "\", \"store_costs\": \"" << normalize_features(child->store_cost);
@@ -2448,12 +2501,20 @@ struct State {
                 std::stringstream loadcoststr;
                 std::stringstream storecoststr;
                 std::stringstream computecoststr;
+                std::stringstream realizestr;
                 std::stringstream tilingstr;
                 for (int i = 0; i < tiling_childs.size(); i+=10) {
                     if (suggestions.size() >= 5) break;
                     suggestions.push_back(tiling_childs[i]);
                     if (i != 0) { coststr << "\\n"; loadcoststr << "\\n"; 
-                        storecoststr << "\\n"; computecoststr << "\\n"; tilingstr << "\\n";}
+                        storecoststr << "\\n"; computecoststr << "\\n"; tilingstr << "\\n"; realizestr << "\\n";}
+
+                    tiling_childs[i].first->calculate_cost(dag, params, cost_model, true);
+                    cost_model->evaluate_costs();
+
+                    float time = realize_output(dag, outputs);
+                    realizestr << time;
+
                     auto cost = tiling_childs[i].first->cost;
                     auto tiling = tiling_childs[i].second;
                     coststr << normalize_maincost(cost);
@@ -2467,6 +2528,7 @@ struct State {
                 stream << "{\"type\": \"phase1\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
                 stream << " \"cost\": \"" << coststr.str() << "\", ";
+                stream << " \"runtime\": \"" << realizestr.str() << "\", ";
                 stream << " \"load_costs\": \"" << loadcoststr.str() << "\", ";
                 stream << " \"store_costs\": \"" << storecoststr.str() << "\", ";
                 stream << " \"compute_costs\": \"" << computecoststr.str() << "\", ";
@@ -2777,55 +2839,6 @@ void configure_pipeline_features(const FunctionDAG &dag,
     cost_model->set_pipeline_features(pipeline_features, params.parallelism);
 }
 
-float realize_output(FunctionDAG& dag, vector<Function> outputs) {
-    std::vector<Buffer<float>> buffs;
-    for (const auto& n: dag.nodes) {
-        if (!n.is_output) continue;
-        auto bs = n.estimated_region_required;
-        std::vector<std::pair<int64_t, int64_t>> vec;
-        for (const auto &b: bs) {
-            vec.push_back(std::make_pair(b.min(), b.max()));
-        }
-
-        // FIXME: Extremely ugly
-        if (vec.size() == 3) {
-            Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first, vec[2].second - vec[2].first);
-            buf.set_min(vec[0].first, vec[1].first, vec[2].first);
-            buffs.push_back(buf);
-        } else if (vec.size() == 2) {
-            Buffer<float> buf(vec[0].second - vec[0].first, vec[1].second - vec[1].first);
-            buf.set_min(vec[0].first, vec[1].first);
-            buffs.push_back(buf);
-        }
-        else if (vec.size() == 1) {
-            Buffer<float> buf(vec[0].second - vec[0].first);
-            buf.set_min(vec[0].first);
-            buffs.push_back(buf);
-        }
-    }
-
-    map<string, Function> env;
-    for (Function f : outputs) {
-        populate_environment(f, env);
-    }
-    // Create a deep-copy of the entire graph of Funcs.
-    vector<Function> copy;
-    std::tie(copy, env) = deep_copy(outputs, env);
-    vector<Pipeline> pipes;
-    for (int i = 0; i < copy.size(); i++) {
-        Func f(copy[0]);
-        Pipeline ptmp(f);
-        pipes.push_back(std::move(ptmp));
-    }
-    const clock_t begin = clock();
-    for (int i = 0; i < copy.size(); i++) {
-        pipes[i].realize(buffs[i]);
-    }
-
-    float time =  float(clock() - begin) / CLOCKS_PER_SEC;
-    return time;
-};
-
 // A single pass of coarse-to-fine beam search.
 IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
                                           vector<Function> outputs,
@@ -2885,7 +2898,7 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
             return best;
         }
 
-        state->generate_children(dag, params, cost_model, enqueue_new_children);
+        state->generate_children(dag, params, cost_model, enqueue_new_children, outputs);
 
         // Drop the other states unconsidered.
         pending.clear();
