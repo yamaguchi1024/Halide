@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
     float sigma = 1.5f;
 
     // algorithm
-    Var x, y, c;
+    Var x("x"), y("y"), c("c");
     Func kernel("kernel");
     kernel(x) = exp(-x*x/(2*sigma*sigma)) / (sqrtf(2*M_PI)*sigma);
 
