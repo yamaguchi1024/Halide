@@ -13,6 +13,7 @@
 #include "Halide.h"
 #include "ASLog.h"
 #include "DefaultCostModel.h"
+#include "PrintLoopNest.h"
 #include "Featurization.h"
 #include "FunctionDAG.h"
 #include "PerfectHashMap.h"
@@ -2910,6 +2911,8 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         cost_model->evaluate_costs();
 
         auto time = realize_output(dag, outputs);
+
+        std::cout << print_loop_nest(outputs);
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
