@@ -2966,6 +2966,7 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
         }
     }
 
+    /*
     std::stringstream stream;
     stream << "{\"type\": \"cost\", \"contents\": ";
     stream << "\"Final Cost: " << normalize_maincost(best->cost);
@@ -2973,6 +2974,7 @@ IntrusivePtr<State> optimal_schedule(FunctionDAG &dag,
     stream << "\", \"store_costs\": \"" << normalize_features(best->store_cost);
     stream << "\", \"compute_costs\": \"" << normalize_features(best->compute_cost) << "\"}";
     std::cout << stream.str() << std::endl;
+    */
 
     return best;
 }
