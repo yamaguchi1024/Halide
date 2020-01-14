@@ -2536,7 +2536,7 @@ struct State {
                 stream << " \"tiling\": \"" << tilingstr.str() << "\", ";
                 stream << " \"instruction\": \"";
                 stream << "Choose the tiling of <font color=\'red\'> Func " << node->func.name();
-                stream << "</font> from (0 - " << suggestions.size() - 1 << ")";
+                stream << "</font>";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
 
@@ -2911,8 +2911,6 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         cost_model->evaluate_costs();
 
         auto time = realize_output(dag, outputs);
-
-        std::cout << print_loop_nest(outputs);
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
