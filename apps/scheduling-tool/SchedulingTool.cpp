@@ -2392,7 +2392,7 @@ struct State {
                 stream << "{\"type\": \"phase0\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
                 stream << " \"contents\": \"";
-                stream << "Click the compute_at location of <font color=\'lime\'> Func " << node->func.name() << "</font>";
+                stream << "Click the compute_at location of <font color=\'red\'> Func " << node->func.name() << "</font>";
                 stream << " (0 ~ " << tile_options.size() - 1 << ") : ";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
@@ -2535,7 +2535,7 @@ struct State {
                 stream << " \"compute_costs\": \"" << computecoststr.str() << "\", ";
                 stream << " \"tiling\": \"" << tilingstr.str() << "\", ";
                 stream << " \"instruction\": \"";
-                stream << "Choose the tiling of <font color=\'lime\'> Func " << node->func.name();
+                stream << "Choose the tiling of <font color=\'red\'> Func " << node->func.name();
                 stream << "</font> from (0 - " << suggestions.size() - 1 << ")";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
@@ -2916,13 +2916,13 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
-        stream << "\"Current Cost: " << normalize_maincost(selected->cost);
-        stream << "\", \"load_costs\": \"" << normalize_features(selected->load_cost);
+        stream << normalize_maincost(selected->cost);
+        stream << ", \"load_costs\": \"" << normalize_features(selected->load_cost);
         stream << "\", \"store_costs\": \"" << normalize_features(selected->store_cost);
         stream << "\", \"compute_costs\": \"" << normalize_features(selected->compute_cost) << "\"}\n";
 
         stream << "{\"type\": \"realize\", \"contents\": ";
-        stream << "\"Run Time: " << time << "\"}";
+        stream << time << "}";
         std::cout << stream.str() << std::endl;
 
         q.clear();
