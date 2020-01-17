@@ -47,10 +47,9 @@ int main(int argc, char **argv) {
     Func output("output");
     output(x, y, c)  = cast<uint8_t>(blur_x(x, y, c));
 
-    // Algorithm!
+    // Scheduling!
 
-
-    // Algorithm end
+    // Scheduling end
 
     output.print_loop_nest();
 
