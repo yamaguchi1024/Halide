@@ -3,6 +3,7 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <queue>
 #include <random>
 #include <set>
@@ -2522,7 +2523,7 @@ struct State {
                     loadcoststr << normalize_features(tiling_childs[i].first->load_cost);
                     storecoststr << normalize_features(tiling_childs[i].first->store_cost);
                     computecoststr << normalize_features(tiling_childs[i].first->compute_cost);
-                    tilingstr << "y: " << tiling[0] << " x: " << tiling[1];
+                    tilingstr << "y: " << tiling[0] << " x: " << std::setfill('0') << std::setw(3) << tiling[1];
                 }
 
                 std::stringstream stream;
