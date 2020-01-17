@@ -103,10 +103,10 @@ int normalize_features(double d) {
     return int(std::floor(d/1000000));
 }
 
-int normalize_maincost(double d) {
+std::string normalize_maincost(double d) {
     if (d < 1000000)
-        return int(std::floor(d));
-    else return 10000000;
+        return std::to_string(int(std::floor(d)));
+    else return "INF";
 }
 
 // Given a multi-dimensional box of dimensionality d, generate a list
