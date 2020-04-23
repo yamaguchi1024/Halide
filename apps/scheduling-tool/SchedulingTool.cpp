@@ -2392,8 +2392,8 @@ struct State {
                 stream << "{\"type\": \"phase0\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
                 stream << " \"contents\": \"";
-                stream << "Click the compute_at location of <font color=\'red\'> Func " << node->func.name() << "</font>";
-                stream << " (0 ~ " << tile_options.size() - 1 << ") : ";
+                stream << "Choose a compute location of <font color=\'red\'> Func " << node->func.name() << "</font>";
+                stream << " from (0 ~ " << tile_options.size() - 1 << ").";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
 
@@ -2522,7 +2522,7 @@ struct State {
                     loadcoststr << normalize_features(tiling_childs[i].first->load_cost);
                     storecoststr << normalize_features(tiling_childs[i].first->store_cost);
                     computecoststr << normalize_features(tiling_childs[i].first->compute_cost);
-                    tilingstr << "y: " << tiling[0] << " x: " << std::setfill('0') << std::setw(3) << tiling[1];
+                    tilingstr << "y: " << tiling[0] << " x: " << std::setfill(' ') << std::setw(3) << tiling[1];
                 }
 
                 std::stringstream stream;
