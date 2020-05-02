@@ -24,19 +24,19 @@ int main(int argc, char **argv) {
     Func kernel("kernel");
     kernel(x) = exp(-x*x/(2*sigma*sigma)) / (sqrtf(2*M_PI)*sigma);
 
-    Func in_bounded("in_bounded");
-    in_bounded = BoundaryConditions::repeat_edge(input);
+    Func bounded("bounded");
+    bounded = BoundaryConditions::repeat_edge(input);
     Func blur_y("blur_y");
-    blur_y(x, y, c) = (kernel(0) * in_bounded(x, y, c) +
-            kernel(1) * (in_bounded(x, y-1, c) +
-                in_bounded(x, y+1, c)) +
-            kernel(2) * (in_bounded(x, y-2, c) +
-                in_bounded(x, y+2, c)) +
-            kernel(3) * (in_bounded(x, y-3, c) +
-                in_bounded(x, y+3, c)));
+    blur_y(x, y, c) = (kernel(0) * bounded(x, y, c) +
+            kernel(1) * (bounded(x, y-1, c) +
+                bounded(x, y+1, c)) +
+            kernel(2) * (bounded(x, y-2, c) +
+                bounded(x, y+2, c)) +
+            kernel(3) * (bounded(x, y-3, c) +
+                bounded(x, y+3, c)));
 
-    Func blur_x("blur_x");
-    blur_x(x, y, c) = (kernel(0) * blur_y(x, y, c) +
+    Func blur("blur");
+    blur(x, y, c) = (kernel(0) * blur_y(x, y, c) +
             kernel(1) * (blur_y(x-1, y, c) +
                 blur_y(x+1, y, c)) +
             kernel(2) * (blur_y(x-2, y, c) +
@@ -44,11 +44,11 @@ int main(int argc, char **argv) {
             kernel(3) * (blur_y(x-3, y, c) +
                 blur_y(x+3, y, c)));
 
-    blur_x.set_estimate(x, 0, input.width()).set_estimate(y, 0, input.height()).set_estimate(c, 0, input.channels());
-    Pipeline(blur_x).auto_schedule(target, params);
+    blur.set_estimate(x, 0, input.width()).set_estimate(y, 0, input.height()).set_estimate(c, 0, input.channels());
+    Pipeline(blur).auto_schedule(target, params);
 
     Func output("output");
-    output(x, y, c)  = cast<uint8_t>(blur_x(x, y, c));
+    output(x, y, c)  = cast<uint8_t>(blur(x, y, c));
     Buffer<uint8_t> buf(input.width(), input.height(), input.channels());
     double t = Halide::Tools::benchmark(3, 10, [&]() {
             output.realize(buf);

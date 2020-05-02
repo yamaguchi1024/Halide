@@ -27,12 +27,12 @@ int main(int argc, char **argv) {
     Func kernel("kernel");
     kernel(x) = exp(-x*x/(2*sigma*sigma)) / (sqrtf(2*M_PI)*sigma);
 
-    Func in_bounded("in_bounded");
-    in_bounded = BoundaryConditions::repeat_edge(input);
+    Func bounded("bounded");
+    bounded = BoundaryConditions::repeat_edge(input);
 
     Func gray("gray");
-    gray(x, y) = 0.299f * in_bounded(x, y, 0) + 0.587f * in_bounded(x, y, 1) +
-                 0.114f * in_bounded(x, y, 2);
+    gray(x, y) = 0.299f * bounded(x, y, 0) + 0.587f * bounded(x, y, 1) +
+                 0.114f * bounded(x, y, 2);
 
     Func blur_y("blur_y");
     blur_y(x, y) = (kernel(0) * gray(x, y) +
@@ -40,14 +40,14 @@ int main(int argc, char **argv) {
                     kernel(2) * (gray(x, y-2) + gray(x, y+2)) +
                     kernel(3) * (gray(x, y-3) + gray(x, y+3)));
 
-    Func blur_x("blur_x");
-    blur_x(x, y) = (kernel(0) * blur_y(x, y) +
+    Func blur("blur");
+    blur(x, y) = (kernel(0) * blur_y(x, y) +
                     kernel(1) * (blur_y(x-1, y) + blur_y(x+1, y)) +
                     kernel(2) * (blur_y(x-2, y) + blur_y(x+2, y)) +
                     kernel(3) * (blur_y(x-3, y) + blur_y(x+3, y)));
 
     Func sharpen("sharpen");
-    sharpen(x, y) = 2 * gray(x, y) - blur_x(x, y);
+    sharpen(x, y) = 2 * gray(x, y) - blur(x, y);
 
     Func ratio("ratio");
     ratio(x, y) = sharpen(x, y) / gray(x, y);

@@ -1227,10 +1227,11 @@ struct LoopNest {
                     stream << ", \"" + prefix + "(vectorized)\"";
                 }
 
-                std::vector<std::string> dims = {"y", "x", "c"};
+                std::vector<std::string> dims = {"x", "y", "c"};
                 std::string xy = dims[i];
+                if (xy == "c") continue;
                 stream << ", \"" + prefix + "for " + node->func.name() + "." + xy + " in 0..";
-                stream << size[i];
+                stream << size[i] - 1;
                 stream <<  "\"";
             }
         }
@@ -2387,13 +2388,15 @@ struct State {
             // Specify the granularity here!!
             // FIXME: I think 0~something is wrong. We should read tile_options.second.
             int gra, tmp_x;
+            std::string fname = node->func.name();
+            if (fname == "repeat_edge") fname = "bounded";
             if (root->children.size() != 0) {
                 std::stringstream stream;
                 stream << "{\"type\": \"phase0\", ";
-                stream << "\"func\": \"" << node->func.name() << "\",";
+                stream << "\"func\": \"" << fname << "\",";
                 stream << " \"contents\": \"";
-                stream << "Choose a compute location of <font color=\'red\'> Func " << node->func.name() << "</font>";
-                stream << " from (0 ~ " << tile_options.size() - 1 << ").";
+                stream << "Choose the compute location of <font color=\'red\'> Func " << fname << "</font>";
+                stream << " from (0 ~ " << tile_options.size() - 1 << ")";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
 
@@ -2463,8 +2466,8 @@ struct State {
                 std::vector<std::vector<int64_t>> tilings;
                 int size_y = (*pure_size)[0];
                 int size_x = (*pure_size)[1];
-                for (int y = 2; y < size_y; y += 4) {
-                    for (int x = 2; x < size_x; x += 4) {
+                for (int y = 4; y < size_y; y += 4) {
+                    for (int x = 4; x < size_x; x += 4) {
                         tilings.push_back({y, x});
                     }
                 }
@@ -2522,7 +2525,7 @@ struct State {
                     loadcoststr << normalize_features(tiling_childs[i].first->load_cost);
                     storecoststr << normalize_features(tiling_childs[i].first->store_cost);
                     computecoststr << normalize_features(tiling_childs[i].first->compute_cost);
-                    tilingstr << "y: " << tiling[0] << " x: " << std::setfill(' ') << std::setw(3) << tiling[1];
+                    tilingstr << "x: " << tiling[0] << " y: " << std::setfill(' ') << std::setw(3) << tiling[1];
                 }
 
                 std::stringstream stream;
@@ -2535,7 +2538,7 @@ struct State {
                 stream << " \"compute_costs\": \"" << computecoststr.str() << "\", ";
                 stream << " \"tiling\": \"" << tilingstr.str() << "\", ";
                 stream << " \"instruction\": \"";
-                stream << "Choose the tiling of <font color=\'red\'> Func " << node->func.name();
+                stream << "Choose or type the tile range of <font color=\'red\'> Func " << node->func.name();
                 stream << "</font>";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
