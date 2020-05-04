@@ -1205,43 +1205,35 @@ struct LoopNest {
         if (!is_root())
             stream << "\"?" << node->func.name() << "?";
 
-        if (tileable || innermost || parallel) {
-            stream << prefix + "(";
-            if (tileable) {
-                stream << "tileable";
-                if (innermost || parallel)
-                    stream << ", ";
-            }
-
-            if (innermost) {
-                stream << "innermost";
-            } else if (parallel) {
+        if (parallel) {
+            if (node->func.name() != "kernel") {
+                stream << prefix + "(";
                 stream << "parallel";
+                stream << ")\", \"";
             }
-            stream << ")\"";
         }
 
         if (!is_root()) {
             for (size_t i = 0; i < size.size(); i++) {
                 if (innermost && i == (size_t) vectorized_loop_index) {
-                    stream << ", \"" + prefix + "(vectorized)\"";
+                    stream << prefix + "(vectorized)\", \"";
                 }
 
                 std::vector<std::string> dims = {"x", "y", "c"};
                 std::string xy = dims[i];
                 if (xy == "c") continue;
-                stream << ", \"" + prefix + "for " + node->func.name() + "." + xy + " in 0..";
-                stream << size[i] - 1;
-                stream <<  "\"";
+                stream << prefix + "for " + node->func.name() + "." + xy + " in 0..";
+                stream << size[i] - 1 << "\"";
+                if (xy == "x" && size.size() > 1)
+                    stream <<  ", \"";
             }
         }
 
         for (auto p : store_at) {
-            if (stream.str().find("realize") != std::string::npos)
-                stream << ", \"";
-            else
+            if (stream.str().find("?") == std::string::npos)
                 stream << "\"?" << p->func.name() << "?";
-            stream << prefix << "realize: " << p->func.name() << "\"";
+            if (is_root() && (stream.str().find("top") == std::string::npos))
+                stream << "(top)" << "\"";
         }
 
         stream << "]";
