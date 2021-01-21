@@ -34,13 +34,15 @@ class FindLoads : public IRVisitor {
         IRVisitor::visit(op);
         for (size_t i = 0; i < loads.size(); i++) {
             for (size_t j = 0; j < loads[i].size(); j++) {
-                loads[i][j] = substitute(op->name, op->value, loads[i][j]);
+                loads[i][j] = graph_substitute(op->name, op->value, loads[i][j]);
             }
         }
     }
 
 public:
-    FindLoads(const string &f) : func(f) {}
+    FindLoads(const string &f)
+        : func(f) {
+    }
 
     vector<vector<Expr>> loads;
 };

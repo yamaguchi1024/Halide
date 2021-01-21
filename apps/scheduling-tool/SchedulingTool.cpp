@@ -71,13 +71,13 @@ float realize_output(FunctionDAG& dag, vector<Function> outputs) {
     vector<Function> copy;
     std::tie(copy, env) = deep_copy(outputs, env);
     vector<Pipeline> pipes;
-    for (int i = 0; i < copy.size(); i++) {
+    for (int i = 0; i < (int) copy.size(); i++) {
         Func f(copy[0]);
         Pipeline ptmp(f);
         pipes.push_back(std::move(ptmp));
     }
     const clock_t begin = clock();
-    for (int i = 0; i < copy.size(); i++) {
+    for (int i = 0; i < (int) copy.size(); i++) {
         pipes[i].realize(buffs[i]);
     }
 
@@ -265,7 +265,7 @@ struct LoopNest {
 
     void deep_copy(const LoopNest &n) {
         size = n.size;
-        for (int i = 0; i < n.children.size(); i++) {
+        for (int i = 0; i < (int) n.children.size(); i++) {
             LoopNest *nl = new LoopNest;
             nl->deep_copy(*n.children[i]);
             children.push_back(nl);
@@ -2076,46 +2076,11 @@ struct State {
             return false;
         }
 
-        int num_stages = (int)features.size();
-
-        Runtime::Buffer<float> schedule_features;
-
         // Tell the cost model about this state. It won't actually
         // evaluate it until we call evaluate_costs (or if it runs out
         // of internal buffer space), so that the evaluations can be
         // batched.
-        cost_model->enqueue(num_stages, &schedule_features, &cost, &load_cost, &store_cost, &compute_cost);
-
-        // index of current stage whose features we are reading
-        int stage = 0;
-        // load schedule features into input buffer
-        for (const auto &n : dag.nodes) {
-
-            // Inputs are computed outside of the pipeline and don't count.
-            if (n.is_input) continue;
-
-            // The remaining stage are not yet
-            // scheduled. Optimistically assume their internal costs
-            // will not depend on the decisions made already, so
-            // there's no point adding it on to the total because it's
-            // the same across all states.  An underestimate of the
-            // cost for loading from these unscheduled stages is
-            // already baked into the scheduled stages that consume
-            // them.
-            if (stage >= num_stages) break;
-
-            // Load up the schedule features for all stages of this Func.
-            for (auto it = n.stages.rbegin(); it != n.stages.rend(); it++) {
-                internal_assert(features.contains(&*it)) << n.func.name() << "\n";
-                const auto &feat = features.get(&*it);
-                for (size_t i = 0; i < ScheduleFeatures::num_features(); i++) {
-                    schedule_features(i, stage) = feat[i];
-                }
-                stage += 1;
-            }
-        }
-        // Check we considered everything we were supposed to.
-        internal_assert(stage == num_stages);
+        cost_model->enqueue(dag, features, &cost);
 
         cost_calculations++;
         return true;
@@ -2355,7 +2320,7 @@ struct State {
             auto tile_options = root->compute_in_tiles(node, nullptr, params, vector_dim, false, 0);
 
             // print cost for each row HERE!
-            for (int i = 0; i < tile_options.size(); i++) {
+            for (int i = 0; i < (int) tile_options.size(); i++) {
                 IntrusivePtr<const LoopNest> ln = tile_options[i].first;
                 auto child = make_child();
                 child->root = std::move(ln);
@@ -2499,7 +2464,7 @@ struct State {
                 std::stringstream computecoststr;
                 std::stringstream realizestr;
                 std::stringstream tilingstr;
-                for (int i = 0; i < tiling_childs.size(); i+=10) {
+                for (int i = 0; i < (int) tiling_childs.size(); i+=10) {
                     if (suggestions.size() >= 5) break;
                     suggestions.push_back(tiling_childs[i]);
                     if (i != 0) { coststr << "\\n"; loadcoststr << "\\n"; 
@@ -2805,34 +2770,7 @@ void configure_pipeline_features(const FunctionDAG &dag,
                                  const MachineParams &params,
                                  CostModel *cost_model) {
     cost_model->reset();
-    const int pipeline_feat_size = head1_w * head1_h;
-    // We ignore the first seven pipeline features in the cost
-    // model. It's just a mask of which types are in use.
-    static_assert(sizeof(PipelineFeatures) - 7 * sizeof(int) ==
-                  sizeof(int) * pipeline_feat_size,
-                  "Incorrect size for pipeline features");
-    int num_stages = 0;
-    for (const auto &n : dag.nodes) {
-        if (!n.is_input) num_stages += (int)n.stages.size();
-    }
-    Runtime::Buffer<float> pipeline_features(head1_w, head1_h, num_stages);
-    int stage = 0;
-    for (const auto &n : dag.nodes) {
-        if (n.is_input) continue;
-        for (auto it = n.stages.rbegin(); it != n.stages.rend(); it++) {
-            const auto &s = *it;
-            const int *pipeline_feats = (const int *)(&(s.features)) + 7;
-            // skip the first 7 features
-            for (int i = 0; i < pipeline_feat_size; i++) {
-                int x = i/7;
-                int y = i%7;
-                pipeline_features(x, y, stage) = pipeline_feats[i];
-            }
-            stage += 1;
-        }
-    }
-    internal_assert(stage == num_stages);
-    cost_model->set_pipeline_features(pipeline_features, params.parallelism);
+    cost_model->set_pipeline_features(dag, params);
 }
 
 // A single pass of coarse-to-fine beam search.
@@ -3048,7 +2986,7 @@ void generate_schedule(const std::vector<Function> &outputs,
     }
 
     if (auto_scheduler_results) {
-        auto_scheduler_results->scheduler_name = "apps/scheduling-tool/SchedulingTool";  // TODO: find a better name (https://github.com/halide/Halide/issues/4057)
+        auto_scheduler_results->scheduler_name = "scheduling tool"; 
         auto_scheduler_results->schedule_source = optimal->schedule_source;
         {
             std::ostringstream out;
@@ -3063,7 +3001,7 @@ void generate_schedule(const std::vector<Function> &outputs,
 // constructor.
 struct RegisterAutoscheduler {
     RegisterAutoscheduler() {
-        Pipeline::set_custom_auto_scheduler(*this);
+        Pipeline::add_autoscheduler("Rolypoly", *this);
     }
 
     void operator()(Pipeline p, const Target &target, const MachineParams &params, AutoSchedulerResults *results) {

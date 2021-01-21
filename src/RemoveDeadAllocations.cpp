@@ -73,9 +73,17 @@ class RemoveDeadAllocations : public IRMutator {
             return op;
         }
     }
+
+    Stmt visit(const Atomic *op) override {
+        if (allocs.contains(op->mutex_name)) {
+            allocs.pop(op->mutex_name);
+        }
+
+        return IRMutator::visit(op);
+    }
 };
 
-Stmt remove_dead_allocations(Stmt s) {
+Stmt remove_dead_allocations(const Stmt &s) {
     return RemoveDeadAllocations().mutate(s);
 }
 

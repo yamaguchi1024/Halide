@@ -1,5 +1,6 @@
 #include "AsyncProducers.h"
 #include "ExprUsesVar.h"
+#include "Function.h"
 #include "IREquality.h"
 #include "IRMutator.h"
 #include "IROperator.h"
@@ -7,16 +8,15 @@
 namespace Halide {
 namespace Internal {
 
-using std::vector;
-using std::set;
-using std::pair;
-using std::string;
 using std::map;
+using std::pair;
+using std::set;
+using std::string;
+using std::vector;
 
 /** A mutator which eagerly folds no-op stmts */
 class NoOpCollapsingMutator : public IRMutator {
 protected:
-
     using IRMutator::visit;
 
     Stmt visit(const LetStmt *op) override {
@@ -89,6 +89,17 @@ protected:
             return then_case;
         } else {
             return IfThenElse::make(op->condition, then_case, else_case);
+        }
+    }
+
+    Stmt visit(const Atomic *op) override {
+        Stmt body = mutate(op->body);
+        if (is_no_op(body)) {
+            return body;
+        } else {
+            return Atomic::make(op->producer_name,
+                                op->mutex_name,
+                                std::move(body));
         }
     }
 };
@@ -165,6 +176,10 @@ class GenerateProducerBody : public NoOpCollapsingMutator {
         }
     }
 
+    Stmt visit(const Atomic *op) override {
+        return Evaluate::make(0);
+    }
+
     Expr visit(const Call *op) override {
         if (op->name == "halide_semaphore_init") {
             internal_assert(op->args.size() == 2);
@@ -179,8 +194,8 @@ class GenerateProducerBody : public NoOpCollapsingMutator {
     set<string> inner_semaphores;
 
 public:
-    GenerateProducerBody(const string &f, const vector<Expr> &s, map<string, string> &a) :
-        func(f), sema(s), cloned_acquires(a) {
+    GenerateProducerBody(const string &f, const vector<Expr> &s, map<string, string> &a)
+        : func(f), sema(s), cloned_acquires(a) {
     }
 };
 
@@ -202,7 +217,7 @@ class GenerateConsumerBody : public NoOpCollapsingMutator {
                 return Acquire::make(acquire_sema, 1, op);
             }
         } else {
-            return IRMutator::visit(op);
+            return NoOpCollapsingMutator::visit(op);
         }
     }
 
@@ -211,7 +226,7 @@ class GenerateConsumerBody : public NoOpCollapsingMutator {
         if (starts_with(op->name, func + ".folding_semaphore.") && ends_with(op->name, ".head")) {
             return mutate(op->body);
         } else {
-            return IRMutator::visit(op);
+            return NoOpCollapsingMutator::visit(op);
         }
     }
 
@@ -219,7 +234,7 @@ class GenerateConsumerBody : public NoOpCollapsingMutator {
         if (starts_with(op->name, func + ".folding_semaphore.") && ends_with(op->name, ".head")) {
             return Evaluate::make(0);
         } else {
-            return IRMutator::visit(op);
+            return NoOpCollapsingMutator::visit(op);
         }
     }
 
@@ -231,13 +246,14 @@ class GenerateConsumerBody : public NoOpCollapsingMutator {
         if (starts_with(var->name, func + ".folding_semaphore.")) {
             return mutate(op->body);
         } else {
-            return IRMutator::visit(op);
+            return NoOpCollapsingMutator::visit(op);
         }
     }
 
 public:
-    GenerateConsumerBody(const string &f, const vector<Expr> &s) :
-        func(f), sema(s) {}
+    GenerateConsumerBody(const string &f, const vector<Expr> &s)
+        : func(f), sema(s) {
+    }
 };
 
 class CloneAcquire : public IRMutator {
@@ -248,9 +264,7 @@ class CloneAcquire : public IRMutator {
 
     Stmt visit(const Evaluate *op) override {
         const Call *call = op->value.as<Call>();
-        const Variable *var = ((call && !call->args.empty()) ?
-                               call->args[0].as<Variable>() :
-                               nullptr);
+        const Variable *var = ((call && !call->args.empty()) ? call->args[0].as<Variable>() : nullptr);
         if (var && var->name == old_name &&
             (call->name == "halide_semaphore_release" ||
              call->name == "halide_semaphore_init")) {
@@ -265,7 +279,8 @@ class CloneAcquire : public IRMutator {
     }
 
 public:
-    CloneAcquire(const string &o, const string &new_name) : old_name(o) {
+    CloneAcquire(const string &o, const string &new_name)
+        : old_name(o) {
         new_var = Variable::make(type_of<halide_semaphore_t *>(), new_name);
     }
 };
@@ -281,8 +296,11 @@ class CountConsumeNodes : public IRVisitor {
         }
         IRVisitor::visit(op);
     }
+
 public:
-    CountConsumeNodes(const string &f) : func(f) {}
+    CountConsumeNodes(const string &f)
+        : func(f) {
+    }
     int count = 0;
 };
 
@@ -351,7 +369,9 @@ class ForkAsyncProducers : public IRMutator {
     }
 
 public:
-    ForkAsyncProducers(const map<string, Function> &e) : env(e) {}
+    ForkAsyncProducers(const map<string, Function> &e)
+        : env(e) {
+    }
 };
 
 // Lowers semaphore initialization from a call to
@@ -433,7 +453,7 @@ class InitializeSemaphores : public IRMutator {
 class TightenProducerConsumerNodes : public IRMutator {
     using IRMutator::visit;
 
-    Stmt make_producer_consumer(string name, bool is_producer, Stmt body, const Scope<int> &scope) {
+    Stmt make_producer_consumer(const string &name, bool is_producer, Stmt body, const Scope<int> &scope) {
         if (const LetStmt *let = body.as<LetStmt>()) {
             if (expr_uses_vars(let->value, scope)) {
                 return ProducerConsumer::make(name, is_producer, body);
@@ -484,8 +504,11 @@ class TightenProducerConsumerNodes : public IRMutator {
     }
 
     const map<string, Function> &env;
+
 public:
-    TightenProducerConsumerNodes(const map<string, Function> &e) : env(e) {}
+    TightenProducerConsumerNodes(const map<string, Function> &e)
+        : env(e) {
+    }
 };
 
 // Broaden the scope of acquire nodes to pack trailing work into the
@@ -562,7 +585,7 @@ class ExpandAcquireNodes : public IRMutator {
 class TightenForkNodes : public IRMutator {
     using IRMutator::visit;
 
-    Stmt make_fork(Stmt first, Stmt rest) {
+    Stmt make_fork(const Stmt &first, const Stmt &rest) {
         const LetStmt *lf = first.as<LetStmt>();
         const LetStmt *lr = rest.as<LetStmt>();
         const Realize *rf = first.as<Realize>();
@@ -637,5 +660,5 @@ Stmt fork_async_producers(Stmt s, const map<string, Function> &env) {
     return s;
 }
 
-}
-}
+}  // namespace Internal
+}  // namespace Halide

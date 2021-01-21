@@ -2,12 +2,6 @@
 
 extern "C" void abort();
 
-namespace Halide {
-namespace Runtime {
-namespace Internal {
-
-WEAK __attribute__((always_inline)) void halide_abort() {
+extern "C" WEAK_INLINE void halide_abort() {
     abort();
 }
-
-}}}

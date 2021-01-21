@@ -5,6 +5,8 @@
  * Defines the Dimension utility class for Halide pipelines
  */
 
+#include <utility>
+
 #include "Func.h"
 #include "Parameter.h"
 
@@ -70,14 +72,13 @@ public:
      * used by the auto-scheduler and/or the RunGen tool/ */
     Dimension set_estimate(Expr min, Expr extent);
 
-   HALIDE_ATTRIBUTE_DEPRECATED("Use set_estimate() instead")
-   Dimension set_bounds_estimate(Expr min, Expr extent) { return set_estimate(min, extent); }
+    HALIDE_ATTRIBUTE_DEPRECATED("Use set_estimate() instead")
+    Dimension set_bounds_estimate(Expr min, Expr extent) {
+        return set_estimate(std::move(min), std::move(extent));
+    }
 
-   HALIDE_ATTRIBUTE_DEPRECATED("min_estimate() will be removed soon, do not use")
-   Expr min_estimate() const;
-
-   HALIDE_ATTRIBUTE_DEPRECATED("extent_estimate() will be removed soon, do not use")
-   Expr extent_estimate() const;
+    Expr min_estimate() const;
+    Expr extent_estimate() const;
 
     /** Get a different dimension of the same buffer */
     // @{

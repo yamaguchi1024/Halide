@@ -1,4 +1,5 @@
 #include "ModulusRemainder.h"
+
 #include "IR.h"
 #include "IROperator.h"
 #include "IRPrinter.h"
@@ -8,16 +9,19 @@ namespace Halide {
 namespace Internal {
 
 namespace {
-// Mod, with mod by zero defined to be the identity for the convenience of the operators below.
-int64_t mod(int64_t a, int64_t m) {
-    if (m == 0) return a;
-    return mod_imp(a, m);
+// A version of mod where a % 0 == a
+int64_t mod(int64_t a, int64_t b) {
+    if (b == 0) {
+        return a;
+    } else {
+        return mod_imp(a, b);
+    }
 }
-}
+}  // namespace
 
 class ComputeModulusRemainder : public IRVisitor {
 public:
-    ModulusRemainder analyze(Expr e);
+    ModulusRemainder analyze(const Expr &e);
 
     ModulusRemainder result;
     Scope<ModulusRemainder> scope;
@@ -69,20 +73,22 @@ public:
     void visit(const Free *) override;
     void visit(const Evaluate *) override;
     void visit(const Shuffle *) override;
+    void visit(const VectorReduce *) override;
     void visit(const Prefetch *) override;
+    void visit(const Atomic *) override;
 };
 
-ModulusRemainder modulus_remainder(Expr e) {
+ModulusRemainder modulus_remainder(const Expr &e) {
     ComputeModulusRemainder mr(nullptr);
     return mr.analyze(e);
 }
 
-ModulusRemainder modulus_remainder(Expr e, const Scope<ModulusRemainder> &scope) {
+ModulusRemainder modulus_remainder(const Expr &e, const Scope<ModulusRemainder> &scope) {
     ComputeModulusRemainder mr(&scope);
     return mr.analyze(e);
 }
 
-bool reduce_expr_modulo(Expr expr, int64_t modulus, int64_t *remainder) {
+bool reduce_expr_modulo(const Expr &expr, int64_t modulus, int64_t *remainder) {
     ModulusRemainder result = modulus_remainder(expr);
 
     /* As an example: If we asked for expr mod 8, and the analysis
@@ -99,7 +105,7 @@ bool reduce_expr_modulo(Expr expr, int64_t modulus, int64_t *remainder) {
         return false;
     }
 }
-bool reduce_expr_modulo(Expr expr, int64_t modulus, int64_t *remainder, const Scope<ModulusRemainder> &scope) {
+bool reduce_expr_modulo(const Expr &expr, int64_t modulus, int64_t *remainder, const Scope<ModulusRemainder> &scope) {
     ModulusRemainder result = modulus_remainder(expr, scope);
 
     if (mod(result.modulus, modulus) == 0) {
@@ -110,13 +116,13 @@ bool reduce_expr_modulo(Expr expr, int64_t modulus, int64_t *remainder, const Sc
     }
 }
 
-ModulusRemainder ComputeModulusRemainder::analyze(Expr e) {
+ModulusRemainder ComputeModulusRemainder::analyze(const Expr &e) {
     e.accept(this);
     return result;
 }
 
 namespace {
-void check(Expr e, int64_t m, int64_t r) {
+void check(const Expr &e, int64_t m, int64_t r) {
     ModulusRemainder result = modulus_remainder(e);
     if (result.modulus != m || result.remainder != r) {
         std::cerr << "Test failed for modulus_remainder:\n";
@@ -134,19 +140,18 @@ void modulus_remainder_test() {
     Expr x = Variable::make(Int(32), "x");
     Expr y = Variable::make(Int(32), "y");
 
-    check((30*x + 3) + (40*y + 2), 10, 5);
-    check((6*x + 3) * (4*y + 1), 2, 1);
-    check(max(30*x - 24, 40*y + 31), 5, 1);
-    check(10*x - 33*y, 1, 0);
-    check(10*x - 35*y, 5, 0);
+    check((30 * x + 3) + (40 * y + 2), 10, 5);
+    check((6 * x + 3) * (4 * y + 1), 2, 1);
+    check(max(30 * x - 24, 40 * y + 31), 5, 1);
+    check(10 * x - 33 * y, 1, 0);
+    check(10 * x - 35 * y, 5, 0);
     check(123, 0, 123);
-    check(Let::make("y", x*3 + 4, y*3 + 4), 9, 7);
+    check(Let::make("y", x * 3 + 4, y * 3 + 4), 9, 7);
     // Check overflow
-    check((5045320*x + 4) * (405713 * y + 3) * (8000123 * x + 4354), 1, 0);
+    check((5045320 * x + 4) * (405713 * y + 3) * (8000123 * x + 4354), 1, 0);
 
     std::cout << "modulus_remainder test passed\n";
 }
-
 
 void ComputeModulusRemainder::visit(const IntImm *op) {
     // Equal to op->value modulo anything. We'll use zero as the
@@ -360,7 +365,8 @@ void ComputeModulusRemainder::visit(const Mod *op) {
 }
 
 ModulusRemainder operator%(const ModulusRemainder &a, const ModulusRemainder &b) {
-    // We can treat x mod y as x + z*y, where we know nothing about z.
+    // For non-zero y, we can treat x mod y as x + z*y, where we know
+    // nothing about z.
     // (ax + b) + z (cx + d) ->
     // ax + b + zcx + dz ->
     // gcd(a, c, d) * w + b
@@ -374,6 +380,18 @@ ModulusRemainder operator%(const ModulusRemainder &a, const ModulusRemainder &b)
     int64_t modulus = gcd(a.modulus, b.modulus);
     modulus = gcd(modulus, b.remainder);
     int64_t remainder = mod(a.remainder, modulus);
+
+    if (b.remainder == 0 && remainder != 0) {
+        // b could be zero, so the result could also just be zero.
+        if (modulus == 0) {
+            remainder = 0;
+        } else {
+            // This can no longer be expressed as ax + b
+            remainder = 0;
+            modulus = 1;
+        }
+    }
+
     return {modulus, remainder};
 }
 
@@ -406,39 +424,39 @@ void ComputeModulusRemainder::visit(const Max *op) {
 }
 
 void ComputeModulusRemainder::visit(const EQ *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const NE *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const LT *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const LE *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const GT *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const GE *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const And *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const Or *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const Not *) {
-    internal_assert(false) << "modulus_remainder of bool\n";
+    internal_error << "modulus_remainder of bool\n";
 }
 
 void ComputeModulusRemainder::visit(const Select *op) {
@@ -451,11 +469,11 @@ void ComputeModulusRemainder::visit(const Load *) {
 }
 
 void ComputeModulusRemainder::visit(const Ramp *) {
-    internal_assert(false) << "modulus_remainder of vector\n";
+    internal_error << "modulus_remainder of vector\n";
 }
 
 void ComputeModulusRemainder::visit(const Broadcast *) {
-    internal_assert(false) << "modulus_remainder of vector\n";
+    internal_error << "modulus_remainder of vector\n";
 }
 
 void ComputeModulusRemainder::visit(const Call *) {
@@ -472,69 +490,79 @@ void ComputeModulusRemainder::visit(const Let *op) {
 }
 
 void ComputeModulusRemainder::visit(const Shuffle *op) {
-    // It's possible that scalar expressions are extracting a lane of a vector - don't fail in this case, but stop
+    // It's possible that scalar expressions are extracting a lane of
+    // a vector - don't fail in this case, but stop
     internal_assert(op->indices.size() == 1) << "modulus_remainder of vector\n";
     result = ModulusRemainder{};
 }
 
+void ComputeModulusRemainder::visit(const VectorReduce *op) {
+    internal_assert(op->type.is_scalar()) << "modulus_remainder of vector\n";
+    result = ModulusRemainder{};
+}
+
 void ComputeModulusRemainder::visit(const LetStmt *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const AssertStmt *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const ProducerConsumer *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const For *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Acquire *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Store *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Provide *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Allocate *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Realize *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Block *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Fork *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Free *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const IfThenElse *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Evaluate *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
 }
 
 void ComputeModulusRemainder::visit(const Prefetch *) {
-    internal_assert(false) << "modulus_remainder of statement\n";
+    internal_error << "modulus_remainder of statement\n";
+}
+
+void ComputeModulusRemainder::visit(const Atomic *) {
+    internal_error << "modulus_remainder of statement\n";
 }
 
 }  // namespace Internal

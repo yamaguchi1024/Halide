@@ -15,7 +15,7 @@ int64_t saturating_mul(int64_t a, int64_t b) {
         return a * b;
     }
 }
-}
+}  // namespace
 
 Expr Simplify::visit(const Mul *op, ExprInfo *bounds) {
     ExprInfo a_bounds, b_bounds;
@@ -72,8 +72,6 @@ Expr Simplify::visit(const Mul *op, ExprInfo *bounds) {
 
         auto rewrite = IRMatcher::rewriter(IRMatcher::mul(a, b), op->type);
         if (rewrite(c0 * c1, fold(c0 * c1)) ||
-            rewrite(IRMatcher::Indeterminate() * x, a) ||
-            rewrite(x * IRMatcher::Indeterminate(), b) ||
             rewrite(IRMatcher::Overflow() * x, a) ||
             rewrite(x * IRMatcher::Overflow(), b) ||
             rewrite(0 * x, 0) ||
@@ -92,7 +90,7 @@ Expr Simplify::visit(const Mul *op, ExprInfo *bounds) {
             rewrite(max(x, y) * min(y, x), y * x) ||
             rewrite(broadcast(x) * broadcast(y), broadcast(x * y, op->type.lanes())) ||
             rewrite(ramp(x, y) * broadcast(z), ramp(x * z, y * z, op->type.lanes()))) {
-            return mutate(std::move(rewrite.result), bounds);
+            return mutate(rewrite.result, bounds);
         }
     }
 
@@ -115,5 +113,5 @@ Expr Simplify::visit(const Mul *op, ExprInfo *bounds) {
     }
 }
 
-}
-}
+}  // namespace Internal
+}  // namespace Halide

@@ -4,6 +4,8 @@
 /apps/HelloMatlab/blurred.png
 /apps/HelloMatlab/iir_blur.mex
 bin/*
+build/*
+share/*
 python_bindings/bin/*
 build-64/*
 build-ios/*
@@ -11,7 +13,6 @@ build-osx/*
 cmake_build*/*
 */build/*
 tmp/*
-doc/*
 include/*
 distrib/*
 testing/*
@@ -54,7 +55,7 @@ tools/objc/*.mobileprovision
 
 
 *.txt.user*
-.idea
+.idea/
 
 # jrk editor settings
 .tm_properties
@@ -86,3 +87,8 @@ test/*.lowered
 src/.tags
 src/.tags_sorted_by_file
 
+/.vs
+/out
+/CMakeSettings.json
+/venv/
+/cmake-build-*/

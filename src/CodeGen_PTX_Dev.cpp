@@ -1,4 +1,5 @@
 #include "CodeGen_PTX_Dev.h"
+#include "CSE.h"
 #include "CodeGen_Internal.h"
 #include "Debug.h"
 #include "ExprUsesVar.h"
@@ -17,8 +18,10 @@
 
 // This is declared in NVPTX.h, which is not exported. Ugly, but seems better than
 // hardcoding a path to the .h file.
-#ifdef WITH_PTX
-namespace llvm { FunctionPass *createNVVMReflectPass(const StringMap<int>& Mapping); }
+#ifdef WITH_NVPTX
+namespace llvm {
+FunctionPass *createNVVMReflectPass(const StringMap<int> &Mapping);
+}
 #endif
 
 namespace Halide {
@@ -29,10 +32,11 @@ using std::vector;
 
 using namespace llvm;
 
-CodeGen_PTX_Dev::CodeGen_PTX_Dev(Target host) : CodeGen_LLVM(host) {
-    #if !defined(WITH_PTX)
+CodeGen_PTX_Dev::CodeGen_PTX_Dev(Target host)
+    : CodeGen_LLVM(host) {
+#if !defined(WITH_NVPTX)
     user_error << "ptx not enabled for this build of Halide.\n";
-    #endif
+#endif
     user_assert(llvm_NVPTX_enabled) << "llvm build not configured with nvptx target enabled\n.";
 
     context = new llvm::LLVMContext();
@@ -46,6 +50,11 @@ CodeGen_PTX_Dev::~CodeGen_PTX_Dev() {
     // same one as the host.
     module.reset();
     delete context;
+}
+
+Type CodeGen_PTX_Dev::upgrade_type_for_storage(const Type &t) const {
+    if (t.element_of() == Float(16)) return t;
+    return CodeGen_LLVM::upgrade_type_for_storage(t);
 }
 
 void CodeGen_PTX_Dev::add_kernel(Stmt stmt,
@@ -118,13 +127,11 @@ void CodeGen_PTX_Dev::add_kernel(Stmt stmt,
     llvm::Metadata *md_args[] = {
         llvm::ValueAsMetadata::get(function),
         MDString::get(*context, "kernel"),
-        llvm::ValueAsMetadata::get(ConstantInt::get(i32_t, 1))
-    };
+        llvm::ValueAsMetadata::get(ConstantInt::get(i32_t, 1))};
 
     MDNode *md_node = MDNode::get(*context, md_args);
 
     module->getOrInsertNamedMetadata("nvvm.annotations")->addOperand(md_node);
-
 
     // Now verify the function is ok
     verifyFunction(*function);
@@ -143,13 +150,22 @@ void CodeGen_PTX_Dev::add_kernel(Stmt stmt,
 void CodeGen_PTX_Dev::init_module() {
     init_context();
 
-    #ifdef WITH_PTX
+#ifdef WITH_NVPTX
     module = get_initial_module_for_ptx_device(target, context);
-    #endif
+#endif
 }
 
 void CodeGen_PTX_Dev::visit(const Call *op) {
     if (op->is_intrinsic(Call::gpu_thread_barrier)) {
+        // Even though we always insert a __syncthreads equivalent
+        // (which has both a device and shared memory fence)
+        // check to make sure the intrinsic has the right number of
+        // arguments
+        internal_assert(op->args.size() == 1) << "gpu_thread_barrier() intrinsic must specify memory fence type.\n";
+
+        auto fence_type_ptr = as_const_int(op->args[0]);
+        internal_assert(fence_type_ptr) << "gpu_thread_barrier() parameter is not a constant integer.\n";
+
         llvm::Function *barrier0 = module->getFunction("llvm.nvvm.barrier0");
         internal_assert(barrier0) << "Could not find PTX barrier intrinsic (llvm.nvvm.barrier0)\n";
         builder->CreateCall(barrier0);
@@ -194,9 +210,9 @@ void CodeGen_PTX_Dev::visit(const For *loop) {
 }
 
 void CodeGen_PTX_Dev::visit(const Allocate *alloc) {
-    user_assert(!alloc->new_expr.defined()) << "Allocate node inside PTX kernel has custom new expression.\n" <<
-        "(Memoization is not supported inside GPU kernels at present.)\n";
-    if (alloc->name == "__shared") {
+    user_assert(!alloc->new_expr.defined()) << "Allocate node inside PTX kernel has custom new expression.\n"
+                                            << "(Memoization is not supported inside GPU kernels at present.)\n";
+    if (alloc->memory_type == MemoryType::GPUShared) {
         // PTX uses zero in address space 3 as the base address for shared memory
         Value *shared_base = Constant::getNullValue(PointerType::get(i8_t, 3));
         sym_push(alloc->name, shared_base);
@@ -211,10 +227,10 @@ void CodeGen_PTX_Dev::visit(const Allocate *alloc) {
         // meaningless, so we had better only be dealing with
         // constants here.
         int32_t size = alloc->constant_allocation_size();
-        user_assert(size > 0)
+        internal_assert(size > 0)
             << "Allocation " << alloc->name << " has a dynamic size. "
-            << "Only fixed-size allocations are supported on the gpu. "
-            << "Try storing into shared memory instead.";
+            << "This should have been moved to the heap by the "
+            << "fuse_gpu_thread_loops lowering pass.\n";
 
         BasicBlock *here = builder->GetInsertBlock();
 
@@ -257,6 +273,44 @@ void CodeGen_PTX_Dev::visit(const Load *op) {
 }
 
 void CodeGen_PTX_Dev::visit(const Store *op) {
+    // Issue atomic store if we are inside an Atomic node.
+    if (emit_atomic_stores) {
+        user_assert(is_one(op->predicate)) << "Atomic update does not support predicated store.\n";
+        user_assert(op->value.type().bits() >= 32) << "CUDA: 8-bit or 16-bit atomics are not supported.\n";
+#if LLVM_VERSION < 90
+        user_assert(op->value.type().is_scalar())
+            << "CUDA atomic update does not support vectorization with LLVM version < 9.\n";
+        // Generate nvvm intrinsics for the atomics if this is a float atomicAdd.
+        // Otherwise defer to the llvm codegen. For llvm version >= 90, atomicrmw support floats so we
+        // can also refer to llvm.
+        // Half atomics are supported by compute capability 7.x or higher.
+        if (op->value.type().is_float() &&
+            (op->value.type().bits() == 32 ||
+             (op->value.type().bits() == 64 &&
+              (target.get_cuda_capability_lower_bound() >= 61)))) {
+            Expr val_expr = op->value;
+            Expr equiv_load = Load::make(op->value.type(), op->name, op->index, Buffer<>(), op->param, op->predicate, op->alignment);
+            Expr delta = simplify(common_subexpression_elimination(op->value - equiv_load));
+            // For atomicAdd, we check if op->value - store[index] is independent of store.
+            bool is_atomic_add = !expr_uses_var(delta, op->name);
+            if (is_atomic_add) {
+                Value *ptr = codegen_buffer_pointer(op->name, op->value.type(), op->index);
+                Value *val = codegen(delta);
+                llvm::Function *intrin = nullptr;
+                if (op->value.type().bits() == 32) {
+                    intrin = module->getFunction("llvm.nvvm.atomic.load.add.f32.p0f32");
+                    internal_assert(intrin) << "Could not find atomic intrinsics llvm.nvvm.atomic.load.add.f32.p0f32\n";
+                } else {
+                    internal_assert(op->value.type().bits() == 64);
+                    intrin = module->getFunction("llvm.nvvm.atomic.load.add.f64.p0f64");
+                    internal_assert(intrin) << "Could not find atomic intrinsics llvm.nvvm.atomic.load.add.f64.p0f64\n";
+                }
+                value = builder->CreateCall(intrin, {ptr, val});
+                return;
+            }
+        }
+#endif
+    }
 
     // Do aligned 4-wide 32-bit stores as a single i128 store.
     const Ramp *r = op->index.as<Ramp>();
@@ -275,12 +329,186 @@ void CodeGen_PTX_Dev::visit(const Store *op) {
     CodeGen_LLVM::visit(op);
 }
 
+void CodeGen_PTX_Dev::visit(const Atomic *op) {
+    // CUDA requires all the threads in a warp to perform the same operations,
+    // which means our mutex will lead to deadlock.
+    user_assert(op->mutex_name.empty())
+        << "The atomic update requires a mutex lock, which is not supported in CUDA.\n";
+
+    // Issue atomic stores.
+    ScopedValue<bool> old_emit_atomic_stores(emit_atomic_stores, true);
+    CodeGen_LLVM::visit(op);
+}
+
+void CodeGen_PTX_Dev::codegen_vector_reduce(const VectorReduce *op, const Expr &init) {
+    // Pattern match 8/16-bit dot products
+
+    const int input_lanes = op->value.type().lanes();
+    const int factor = input_lanes / op->type.lanes();
+    const Mul *mul = op->value.as<Mul>();
+    if (op->op == VectorReduce::Add &&
+        mul &&
+        (factor % 4 == 0) &&
+        (op->type.element_of() == Int(32) ||
+         op->type.element_of() == UInt(32))) {
+        Expr i = init;
+        if (!i.defined()) {
+            i = cast(mul->type, 0);
+        }
+        // Try to narrow the multiply args to 8-bit
+        Expr a = mul->a, b = mul->b;
+        if (op->type.is_uint()) {
+            a = lossless_cast(UInt(8, input_lanes), a);
+            b = lossless_cast(UInt(8, input_lanes), b);
+        } else {
+            a = lossless_cast(Int(8, input_lanes), a);
+            b = lossless_cast(Int(8, input_lanes), b);
+            if (!a.defined()) {
+                // try uint
+                a = lossless_cast(UInt(8, input_lanes), mul->a);
+            }
+            if (!b.defined()) {
+                b = lossless_cast(UInt(8, input_lanes), mul->b);
+            }
+        }
+        // If we only managed to narrow one of them, try to narrow the
+        // other to 16-bit. Swap the args so that it's always 'a'.
+        Expr a_orig = mul->a;
+        if (a.defined() && !b.defined()) {
+            std::swap(a, b);
+            a_orig = mul->b;
+        }
+        if (b.defined() && !a.defined()) {
+            // Try 16-bit instead
+            a = lossless_cast(UInt(16, input_lanes), a_orig);
+            if (!a.defined() && !op->type.is_uint()) {
+                a = lossless_cast(Int(16, input_lanes), a_orig);
+            }
+        }
+
+        if (a.defined() && b.defined()) {
+            std::ostringstream ss;
+            if (a.type().bits() == 8) {
+                ss << "dp4a";
+            } else {
+                ss << "dp2a";
+            }
+            if (a.type().is_int()) {
+                ss << "_s32";
+            } else {
+                ss << "_u32";
+            }
+            if (b.type().is_int()) {
+                ss << "_s32";
+            } else {
+                ss << "_u32";
+            }
+            const int a_32_bit_words_per_sum = (factor * a.type().bits()) / 32;
+            const int b_32_bit_words_per_sum = (factor * b.type().bits()) / 32;
+            // Reinterpret a and b as 32-bit values with fewer
+            // lanes. If they're aligned dense loads we should just do a
+            // different load.
+            for (Expr *e : {&a, &b}) {
+                int sub_lanes = 32 / e->type().bits();
+                const Load *load = e->as<Load>();
+                const Ramp *idx = load ? load->index.as<Ramp>() : nullptr;
+                if (idx &&
+                    is_one(idx->stride) &&
+                    load->alignment.modulus % sub_lanes == 0 &&
+                    load->alignment.remainder % sub_lanes == 0) {
+                    Expr new_idx = simplify(idx->base / sub_lanes);
+                    int load_lanes = input_lanes / sub_lanes;
+                    if (input_lanes > sub_lanes) {
+                        new_idx = Ramp::make(new_idx, 1, load_lanes);
+                    }
+                    *e = Load::make(Int(32, load_lanes),
+                                    load->name,
+                                    new_idx,
+                                    load->image,
+                                    load->param,
+                                    const_true(load_lanes),
+                                    load->alignment / sub_lanes);
+                } else {
+                    *e = reinterpret(Int(32, input_lanes / sub_lanes), *e);
+                }
+            }
+            string name = ss.str();
+            vector<Expr> result;
+            for (int l = 0; l < op->type.lanes(); l++) {
+                // To compute a single lane of the output, we'll
+                // extract the appropriate slice of the args, which
+                // have been reinterpreted as 32-bit vectors, then
+                // call either dp4a or dp2a the appropriate number of
+                // times, and finally sum the result.
+                Expr i_slice, a_slice, b_slice;
+                if (i.type().is_scalar()) {
+                    i_slice = i;
+                } else {
+                    i_slice = Shuffle::make_extract_element(i, l);
+                }
+                if (a.type().is_scalar()) {
+                    a_slice = a;
+                } else {
+                    a_slice = Shuffle::make_slice(a, l * a_32_bit_words_per_sum, 1, a_32_bit_words_per_sum);
+                }
+                if (b.type().is_scalar()) {
+                    b_slice = b;
+                } else {
+                    b_slice = Shuffle::make_slice(b, l * b_32_bit_words_per_sum, 1, b_32_bit_words_per_sum);
+                }
+                for (int i = 0; i < b_32_bit_words_per_sum; i++) {
+                    if (a_slice.type().lanes() == b_slice.type().lanes()) {
+                        Expr a_lane, b_lane;
+                        if (b_slice.type().is_scalar()) {
+                            a_lane = a_slice;
+                            b_lane = b_slice;
+                        } else {
+                            a_lane = Shuffle::make_extract_element(a_slice, i);
+                            b_lane = Shuffle::make_extract_element(b_slice, i);
+                        }
+                        i_slice = Call::make(i_slice.type(), name,
+                                             {a_lane, b_lane, i_slice},
+                                             Call::PureExtern);
+                    } else {
+                        internal_assert(a_slice.type().lanes() == 2 * b_slice.type().lanes());
+                        Expr a_lane_lo, a_lane_hi, b_lane;
+                        if (b_slice.type().is_scalar()) {
+                            b_lane = b_slice;
+                        } else {
+                            b_lane = Shuffle::make_extract_element(b_slice, i);
+                        }
+                        a_lane_lo = Shuffle::make_extract_element(a_slice, 2 * i);
+                        a_lane_hi = Shuffle::make_extract_element(a_slice, 2 * i + 1);
+                        i_slice = Call::make(i_slice.type(), name,
+                                             {a_lane_lo, a_lane_hi, b_lane, i_slice},
+                                             Call::PureExtern);
+                    }
+                }
+                i_slice = simplify(i_slice);
+                i_slice = common_subexpression_elimination(i_slice);
+                result.push_back(i_slice);
+            }
+            // Concatenate the per-lane results to get the full vector result
+            Expr equiv = Shuffle::make_concat(result);
+            equiv.accept(this);
+            return;
+        }
+    }
+    CodeGen_LLVM::codegen_vector_reduce(op, init);
+}
+
 string CodeGen_PTX_Dev::march() const {
     return "nvptx64";
 }
 
 string CodeGen_PTX_Dev::mcpu() const {
-    if (target.has_feature(Target::CUDACapability61)) {
+    if (target.has_feature(Target::CUDACapability80)) {
+        return "sm_80";
+    } else if (target.has_feature(Target::CUDACapability75)) {
+        return "sm_75";
+    } else if (target.has_feature(Target::CUDACapability70)) {
+        return "sm_70";
+    } else if (target.has_feature(Target::CUDACapability61)) {
         return "sm_61";
     } else if (target.has_feature(Target::CUDACapability50)) {
         return "sm_50";
@@ -296,17 +524,21 @@ string CodeGen_PTX_Dev::mcpu() const {
 }
 
 string CodeGen_PTX_Dev::mattrs() const {
-    if (target.has_feature(Target::CUDACapability61)) {
+    if (target.has_feature(Target::CUDACapability80)) {
+        return "+ptx70";
+    } else if (target.has_feature(Target::CUDACapability70) ||
+               target.has_feature(Target::CUDACapability75)) {
+        return "+ptx60";
+    } else if (target.has_feature(Target::CUDACapability61)) {
         return "+ptx50";
     } else if (target.features_any_of({Target::CUDACapability32,
-                                Target::CUDACapability50})) {
+                                       Target::CUDACapability50})) {
         // Need ptx isa 4.0.
         return "+ptx40";
     } else {
         // Use the default. For llvm 3.5 it's ptx 3.2.
         return "";
     }
-
 }
 
 bool CodeGen_PTX_Dev::use_soft_float_abi() const {
@@ -315,7 +547,7 @@ bool CodeGen_PTX_Dev::use_soft_float_abi() const {
 
 vector<char> CodeGen_PTX_Dev::compile_to_src() {
 
-    #ifdef WITH_PTX
+#ifdef WITH_NVPTX
 
     debug(2) << "In CodeGen_PTX_Dev::compile_to_src";
 
@@ -329,11 +561,13 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
     // Allocate target machine
 
     std::string err_str;
-    const llvm::Target *target = TargetRegistry::lookupTarget(triple.str(), err_str);
-    internal_assert(target) << err_str << "\n";
+    const llvm::Target *llvm_target = TargetRegistry::lookupTarget(triple.str(), err_str);
+    internal_assert(llvm_target) << err_str << "\n";
 
     TargetOptions options;
+#if LLVM_VERSION < 120
     options.PrintMachineCode = false;
+#endif
     options.AllowFPOpFusion = FPOpFusion::Fast;
     options.UnsafeFPMath = true;
     options.NoInfsFPMath = true;
@@ -344,11 +578,11 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
     options.StackAlignmentOverride = 0;
 
     std::unique_ptr<TargetMachine>
-        target_machine(target->createTargetMachine(triple.str(),
-                                                   mcpu(), mattrs(), options,
-                                                   llvm::Reloc::PIC_,
-                                                   llvm::CodeModel::Small,
-                                                   CodeGenOpt::Aggressive));
+        target_machine(llvm_target->createTargetMachine(triple.str(),
+                                                        mcpu(), mattrs(), options,
+                                                        llvm::Reloc::PIC_,
+                                                        llvm::CodeModel::Small,
+                                                        CodeGenOpt::Aggressive));
 
     internal_assert(target_machine.get()) << "Could not allocate target machine!";
 
@@ -379,8 +613,7 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
     // use of fused-multiply-add, but they do not seem to be controlled
     // by this __nvvvm_reflect mechanism and may be flags to earlier compiler
     // passes.
-    #define kDefaultDenorms 0
-    #define kFTZDenorms     1
+    const int kFTZDenorms = 1;
 
     // Insert a module flag for the FTZ handling.
     module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
@@ -392,11 +625,21 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
         }
     }
 
+    // At present, we default to *enabling* LLVM loop optimization,
+    // unless DisableLLVMLoopOpt is set; we're going to flip this to defaulting
+    // to *not* enabling these optimizations (and removing the DisableLLVMLoopOpt feature).
+    // See https://github.com/halide/Halide/issues/4113 for more info.
+    // (Note that setting EnableLLVMLoopOpt always enables loop opt, regardless
+    // of the setting of DisableLLVMLoopOpt.)
+    const bool do_loop_opt = !target.has_feature(Target::DisableLLVMLoopOpt) ||
+                             target.has_feature(Target::EnableLLVMLoopOpt);
+
     PassManagerBuilder b;
     b.OptLevel = 3;
     b.Inliner = createFunctionInliningPass(b.OptLevel, 0, false);
-    b.LoopVectorize = true;
+    b.LoopVectorize = do_loop_opt;
     b.SLPVectorize = true;
+    b.DisableUnrollLoops = !do_loop_opt;
 
     target_machine->adjustPassManager(b);
 
@@ -410,7 +653,11 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
 
     // Ask the target to add backend passes as necessary.
     bool fail = target_machine->addPassesToEmitFile(module_pass_manager, ostream, nullptr,
+#if LLVM_VERSION >= 100
+                                                    ::llvm::CGFT_AssemblyFile,
+#else
                                                     TargetMachine::CGFT_AssemblyFile,
+#endif
                                                     true);
     if (fail) {
         internal_error << "Failed to set up passes to emit PTX source\n";
@@ -429,7 +676,8 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
     }
     debug(2) << "Done with CodeGen_PTX_Dev::compile_to_src";
 
-    debug(1) << "PTX kernel:\n" << outstr.c_str() << "\n";
+    debug(1) << "PTX kernel:\n"
+             << outstr.c_str() << "\n";
 
     vector<char> buffer(outstr.begin(), outstr.end());
 
@@ -448,7 +696,7 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
         if (system(cmd.c_str()) == 0) {
             cmd = "nvdisasm " + sass.pathname();
             int ret = system(cmd.c_str());
-            (void)ret; // Don't care if it fails
+            (void)ret;  // Don't care if it fails
         }
 
         // Note: It works to embed the contents of the .sass file in
@@ -470,7 +718,7 @@ vector<char> CodeGen_PTX_Dev::compile_to_src() {
     // Null-terminate the ptx source
     buffer.push_back(0);
     return buffer;
-#else // WITH_PTX
+#else  // WITH_NVPTX
     return vector<char>();
 #endif
 }
@@ -481,7 +729,7 @@ int CodeGen_PTX_Dev::native_vector_bits() const {
 }
 
 string CodeGen_PTX_Dev::get_current_kernel_name() {
-    return function->getName();
+    return get_llvm_function_name(function);
 }
 
 void CodeGen_PTX_Dev::dump() {
@@ -490,6 +738,24 @@ void CodeGen_PTX_Dev::dump() {
 
 std::string CodeGen_PTX_Dev::print_gpu_name(const std::string &name) {
     return name;
+}
+
+bool CodeGen_PTX_Dev::supports_atomic_add(const Type &t) const {
+    if (t.bits() < 32) {
+        // TODO: Half atomics are supported by compute capability 7.x or higher.
+        return false;
+    }
+    if (t.is_int_or_uint()) {
+        return true;
+    }
+    if (t.is_float() && t.bits() == 32) {
+        return true;
+    }
+    if (t.is_float() && t.bits() == 64) {
+        // double atomics are supported since CC6.1
+        return target.get_cuda_capability_lower_bound() >= 61;
+    }
+    return false;
 }
 
 }  // namespace Internal

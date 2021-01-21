@@ -24,11 +24,14 @@ class QualifyExpr : public IRMutator {
         Expr body = mutate(op->body);
         return Let::make(prefix + op->name, value, body);
     }
+
 public:
-    QualifyExpr(const string &p) : prefix(p) {}
+    QualifyExpr(const string &p)
+        : prefix(p) {
+    }
 };
 
-Expr qualify(const string &prefix, Expr value) {
+Expr qualify(const string &prefix, const Expr &value) {
     QualifyExpr q(prefix);
     return q.mutate(value);
 }
