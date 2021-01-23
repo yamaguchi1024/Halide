@@ -346,9 +346,11 @@ void BoundContents::validate() const {
 }
 
 BoundContents::Layout::~Layout() {
+    /*
     internal_assert(num_live == 0)
         << "Destroying a Layout without returning all the BoundContents. "
         << num_live << " are still live\n";
+        */
     for (auto *b : pool) {
         b->~BoundContents();
     }
@@ -1070,20 +1072,20 @@ void FunctionDAG::dump_simple() const {
     std::stringstream stream;
     stream << "{\"type\":\"dag\", \"nodes\": [";
     //for (const Node &n : nodes) {
-    for (int i = 0; i < nodes.size(); i++) {
+    for (int i = 0; i < (int) nodes.size(); i++) {
         std::string fname = nodes[i].func.name();
         stream << "\"" << fname << "\" ";
-        if (i != nodes.size() - 1)
+        if (i != (int) nodes.size() - 1)
             stream << ", ";
     }
     stream << "], \"edges\": [";
     //for (const Edge &e : edges) {
-    for (int i = 0; i < edges.size(); i++) {
+    for (int i = 0; i < (int) edges.size(); i++) {
         std::string pname = erase_update(edges[i].producer->func.name());
         std::string cname = erase_update(edges[i].consumer->name);
 
         stream << "[ \"" << pname << "\", \"" << cname<< "\"] ";
-        if (i != edges.size() - 1)
+        if (i != (int) edges.size() - 1)
             stream << ", ";
     }
     stream << "]}";

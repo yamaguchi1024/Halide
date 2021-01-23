@@ -161,6 +161,11 @@ public:
     // The loss. L2 on relative throughput.
     Output<Buffer<float>> loss_output{"loss_output", 0};
 
+    // Prediction output for IDE
+    Output<Buffer<float>> load_cost_output{ "load_cost_output", 1 };
+    Output<Buffer<float>> store_cost_output{ "store_cost_output", 1 };
+    Output<Buffer<float>> compute_cost_output{ "compute_cost_output", 1 };
+
     // Zero pad alone the last dimension of a Func
     Func pad_stages(Func f, Expr stages) {
         Halide::Region bounds(f.dimensions());
@@ -379,6 +384,26 @@ public:
                      cost_of_parallelism +
                      cost_of_working_set);
 
+        RDom r_reduce(0, num_stages);
+
+        Func load_cost_2;
+        load_cost_2(n, w) = load_cost;
+        Func load_cost_1;
+        load_cost_1(n) += load_cost_2(n, r_reduce);
+        load_cost_output(n) = load_cost_1(n);
+
+        Func store_cost_2;
+        store_cost_2(n, w) = store_cost;
+        Func store_cost_1;
+        store_cost_1(n) += store_cost_2(n, r_reduce);
+        store_cost_output(n) = store_cost_1(n);
+
+        Func compute_cost_2;
+        compute_cost_2(n, w) = compute_cost;
+        Func compute_cost_1;
+        compute_cost_1(n) += compute_cost_2(n, r_reduce);
+        compute_cost_output(n) = compute_cost_1(n);
+
         for (int i = 0; i < 32; i++) {
             cost += 0.0f * relu1(i, w, n);
         }
@@ -389,7 +414,6 @@ public:
 
         // Sum across the stages.
         Func prediction;
-        RDom r_reduce(0, num_stages);
         prediction(n) += runtime_per_stage(n, r_reduce);
 
         prediction_output(n) = prediction(n);
@@ -493,8 +517,7 @@ public:
                 Var ci, wi;
                 if (!training) {
                     relu
-                        .compute_at(prediction_output, n)
-                        .store_at(prediction_output, no)
+                        .compute_root()
                         .tile(c, w, ci, wi, vec, 4, TailStrategy::RoundUp)
                         .vectorize(ci);
                     conv.compute_at(relu, c);
@@ -532,7 +555,7 @@ public:
             // across the batch.
             if (!training) {
                 normalized_schedule_features
-                    .compute_at(prediction_output, no)
+                    .compute_at(head2_relu, n)
                     .vectorize(n);
             } else {
                 normalized_schedule_features

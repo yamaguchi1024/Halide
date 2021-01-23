@@ -2080,7 +2080,7 @@ struct State {
         // evaluate it until we call evaluate_costs (or if it runs out
         // of internal buffer space), so that the evaluations can be
         // batched.
-        cost_model->enqueue(dag, features, &cost);
+        cost_model->enqueue(dag, features, &cost, &load_cost, &store_cost, &compute_cost);
 
         cost_calculations++;
         return true;
@@ -2095,6 +2095,9 @@ struct State {
         s->parent = this;
         s->root = root;
         s->cost = cost;
+        s->load_cost = load_cost;
+        s->store_cost = store_cost;
+        s->compute_cost = compute_cost;
         s->num_decisions_made = num_decisions_made;
         return s;
     }

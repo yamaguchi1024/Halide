@@ -455,7 +455,10 @@ int main(int argc, char **argv) {
                         for (size_t j = 0; j < batch_size; j++) {
                             auto &sched = it->second;
                             Halide::Runtime::Buffer<float> buf;
-                            tp->enqueue(p.second.num_stages, &buf, &sched.prediction[model]);
+                            double load_cost = 0;
+                            double store_cost = 0;
+                            double compute_cost = 0;
+                            tp->enqueue(p.second.num_stages, &buf, &sched.prediction[model], &load_cost, &store_cost, &compute_cost);
                             runtimes(j) = sched.runtimes[0];
                             if (runtimes(j) < runtimes(fastest_idx)) {
                                 fastest_idx = j;

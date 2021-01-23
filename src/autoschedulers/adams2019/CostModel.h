@@ -28,7 +28,7 @@ public:
     // Note that the dag argument should correspond to the dag specified previously when calling set_pipeline_features.
     virtual void enqueue(const Internal::Autoscheduler::FunctionDAG &dag,
                          const Halide::Internal::Autoscheduler::StageMapOfScheduleFeatures &schedule_feats,
-                         double *cost_ptr) = 0;
+                         double *cost_ptr, double *load_ptr, double *store_ptr, double *comput_ptr) = 0;
 
     // Evaluate all schedules in the queue.
     virtual void evaluate_costs() = 0;

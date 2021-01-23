@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
             output.realize(buf);
         });
 
-    std::cerr << "RT from test: " << t*1000 << std::endl;
+    std::cerr << "Runtime from test: " << t*1000 << std::endl;
     Halide::Tools::save_image(buf, "gaussian_blur.png");
 
     return 0;

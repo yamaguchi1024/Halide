@@ -383,11 +383,14 @@ struct State {
             }
         }
 
+        double load_cost = 0;
+        double store_cost = 0;
+        double compute_cost = 0;
         // Tell the cost model about this state. It won't actually
         // evaluate it until we call evaluate_costs (or if it runs out
         // of internal buffer space), so that the evaluations can be
         // batched.
-        cost_model->enqueue(dag, features, &cost);
+        cost_model->enqueue(dag, features, &cost, &load_cost, &store_cost, &compute_cost);
 
         cost_calculations++;
         return true;

@@ -85,7 +85,7 @@ void DefaultCostModel::set_pipeline_features(const Runtime::Buffer<float> &pipel
 
 void DefaultCostModel::enqueue(const Internal::Autoscheduler::FunctionDAG &dag,
                                const Halide::Internal::Autoscheduler::StageMapOfScheduleFeatures &schedule_feats,
-                               double *cost_ptr) {
+                               double *cost_ptr, double *load_ptr, double *store_ptr, double *compute_ptr) {
     num_stages = (int)schedule_feats.size();
 
     Runtime::Buffer<float> schedule_features;
@@ -94,7 +94,7 @@ void DefaultCostModel::enqueue(const Internal::Autoscheduler::FunctionDAG &dag,
     // evaluate it until we call evaluate_costs (or if it runs out
     // of internal buffer space), so that the evaluations can be
     // batched.
-    enqueue(num_stages, &schedule_features, cost_ptr);
+    enqueue(num_stages, &schedule_features, cost_ptr, load_ptr, store_ptr, compute_ptr);
 
     // index of current stage whose features we are reading
     int stage = 0;
@@ -128,7 +128,8 @@ void DefaultCostModel::enqueue(const Internal::Autoscheduler::FunctionDAG &dag,
     internal_assert(stage == num_stages);
 }
 
-void DefaultCostModel::enqueue(int ns, Runtime::Buffer<float> *schedule_feats, double *cost_ptr) {
+void DefaultCostModel::enqueue(int ns, Runtime::Buffer<float> *schedule_feats,
+        double *cost_ptr, double *load_ptr, double *store_ptr, double *compute_ptr) {
     num_stages = ns;
 
     // We know the most stages that will ever be enqueued from the schedule features
@@ -145,8 +146,16 @@ void DefaultCostModel::enqueue(int ns, Runtime::Buffer<float> *schedule_feats, d
         schedule_feat_queue = Runtime::Buffer<float>(batch_size, head2_w, max_num_stages);
         if (!costs.data()) {
             internal_assert(!cost_ptrs.data());
+
             costs = Runtime::Buffer<float>(batch_size);
+            loads = Runtime::Buffer<float>(batch_size);
+            stores = Runtime::Buffer<float>(batch_size);
+            computes = Runtime::Buffer<float>(batch_size);
+
             cost_ptrs = Runtime::Buffer<double *>(batch_size);
+            load_ptrs = Runtime::Buffer<double *>(batch_size);
+            store_ptrs = Runtime::Buffer<double *>(batch_size);
+            compute_ptrs = Runtime::Buffer<double *>(batch_size);
         }
     }
 
@@ -156,6 +165,9 @@ void DefaultCostModel::enqueue(int ns, Runtime::Buffer<float> *schedule_feats, d
 
     *schedule_feats = schedule_feat_queue.sliced(0, cursor);
     cost_ptrs(cursor) = cost_ptr;
+    load_ptrs(cursor) = load_ptr;
+    store_ptrs(cursor) = store_ptr;
+    compute_ptrs(cursor) = compute_ptr;
 
     cursor++;
 }  // namespace Halide
@@ -195,6 +207,9 @@ float DefaultCostModel::backprop(const Runtime::Buffer<const float> &true_runtim
     }
 
     Runtime::Buffer<float> dst = costs.cropped(0, 0, cursor);
+    Runtime::Buffer<float> load = loads.cropped(0, 0, cursor);
+    Runtime::Buffer<float> store = stores.cropped(0, 0, cursor);
+    Runtime::Buffer<float> compute = computes.cropped(0, 0, cursor);
 
     int fastest_idx = 0;
     for (int i = 0; i < cursor; i++) {
@@ -218,7 +233,10 @@ float DefaultCostModel::backprop(const Runtime::Buffer<const float> &true_runtim
                                   head2_filter_update, head2_bias_update,
                                   conv1_filter_update, conv1_bias_update,
                                   dst,
-                                  loss);
+                                  loss,
+                                  load,
+                                  store,
+                                  compute);
     (void)result;
     internal_assert(result == 0);
 
@@ -226,6 +244,9 @@ float DefaultCostModel::backprop(const Runtime::Buffer<const float> &true_runtim
     for (int i = 0; i < cursor; i++) {
         internal_assert(cost_ptrs(i));
         *(cost_ptrs(i)) = dst(i);
+        *(load_ptrs(i)) = load(i);
+        *(store_ptrs(i)) = store(i);
+        *(compute_ptrs(i)) = compute(i);
         if (std::isnan(dst(i))) {
             any_nans = true;
             aslog(0) << "Prediction " << i << " is NaN. True runtime is " << true_runtimes(i) << "\n";
@@ -268,6 +289,9 @@ void DefaultCostModel::evaluate_costs() {
     internal_assert(schedule_feat_queue.data());
 
     Runtime::Buffer<float> dst = costs.cropped(0, 0, cursor);
+    Runtime::Buffer<float> load = loads.cropped(0, 0, cursor);
+    Runtime::Buffer<float> store = stores.cropped(0, 0, cursor);
+    Runtime::Buffer<float> compute = computes.cropped(0, 0, cursor);
 
     auto loss = Runtime::Buffer<float>::make_scalar();
 
@@ -280,13 +304,19 @@ void DefaultCostModel::evaluate_costs() {
                             weights.head2_filter, weights.head2_bias,
                             weights.conv1_filter, weights.conv1_bias,
                             0.0f, 0, 0, nullptr,
-                            dst, loss);
+                            dst, loss, load, store, compute);
     (void)result;
     internal_assert(result == 0);
 
     for (int i = 0; i < cursor; i++) {
         internal_assert(cost_ptrs(i));
         *(cost_ptrs(i)) = dst(i);
+    }
+
+    for (int i = 0; i < cursor; i++) {
+        *(load_ptrs(i)) = load(i);
+        *(store_ptrs(i)) = store(i);
+        *(compute_ptrs(i)) = compute(i);
     }
 
     cursor = 0;

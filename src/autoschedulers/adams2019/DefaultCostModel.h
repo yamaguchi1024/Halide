@@ -10,8 +10,11 @@ namespace Halide {
 class DefaultCostModel : public CostModel {
 private:
     Internal::Weights weights;
-    Runtime::Buffer<float> schedule_feat_queue, pipeline_feat_queue, costs;
+    Runtime::Buffer<float> schedule_feat_queue, pipeline_feat_queue, costs, loads, stores, computes;
     Runtime::Buffer<double *> cost_ptrs;
+    Buffer<double *> load_ptrs;
+    Buffer<double *> store_ptrs;
+    Buffer<double *> compute_ptrs;
     int cursor, num_stages, num_cores;
 
     const std::string weights_in_path, weights_out_path;
@@ -44,8 +47,9 @@ public:
     // schedule_features that should be filled in by the caller.
     void enqueue(const Internal::Autoscheduler::FunctionDAG &dag,
                  const Halide::Internal::Autoscheduler::StageMapOfScheduleFeatures &schedule_feats,
-                 double *cost_ptr) override;
-    void enqueue(int ns, Runtime::Buffer<float> *schedule_feats, double *cost_ptr);
+                 double *cost_ptr, double *load_ptr, double *store_ptr, double *compute_ptr) override;
+    void enqueue(int ns, Runtime::Buffer<float> *schedule_feats,
+                 double *cost_ptr, double *load_ptr, double *store_ptr, double *compute_ptr);
 
     // Evaluate all schedules in the queue.
     void evaluate_costs() override;

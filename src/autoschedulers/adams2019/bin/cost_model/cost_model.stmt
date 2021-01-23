@@ -1,0 +1,759 @@
+module name=cost_model, target=x86-64-linux-avx-avx2-f16c-fma-no_runtime-sse41
+external_plus_metadata func cost_model (num_stages, batch_size, num_cores, pipeline_features, schedule_features, head1_filter, head1_bias, head2_filter, head2_bias, filter1, bias1, learning_rate, timestep, reference, true_runtime, prediction_output, loss_output, load_cost_output, store_cost_output, compute_cost_output) {
+assert((uint64)reinterpret((halide_buffer_t *)store_cost_output.buffer) != (uint64)0, halide_error_buffer_argument_is_null("store_cost_output"))
+assert((uint64)reinterpret((halide_buffer_t *)schedule_features.buffer) != (uint64)0, halide_error_buffer_argument_is_null("schedule_features"))
+assert((uint64)reinterpret((halide_buffer_t *)prediction_output.buffer) != (uint64)0, halide_error_buffer_argument_is_null("prediction_output"))
+assert((uint64)reinterpret((halide_buffer_t *)pipeline_features.buffer) != (uint64)0, halide_error_buffer_argument_is_null("pipeline_features"))
+assert((uint64)reinterpret((halide_buffer_t *)loss_output.buffer) != (uint64)0, halide_error_buffer_argument_is_null("loss_output"))
+assert((uint64)reinterpret((halide_buffer_t *)load_cost_output.buffer) != (uint64)0, halide_error_buffer_argument_is_null("load_cost_output"))
+assert((uint64)reinterpret((halide_buffer_t *)head2_filter.buffer) != (uint64)0, halide_error_buffer_argument_is_null("head2_filter"))
+assert((uint64)reinterpret((halide_buffer_t *)head2_bias.buffer) != (uint64)0, halide_error_buffer_argument_is_null("head2_bias"))
+assert((uint64)reinterpret((halide_buffer_t *)head1_filter.buffer) != (uint64)0, halide_error_buffer_argument_is_null("head1_filter"))
+assert((uint64)reinterpret((halide_buffer_t *)head1_bias.buffer) != (uint64)0, halide_error_buffer_argument_is_null("head1_bias"))
+assert((uint64)reinterpret((halide_buffer_t *)filter1.buffer) != (uint64)0, halide_error_buffer_argument_is_null("filter1"))
+assert((uint64)reinterpret((halide_buffer_t *)compute_cost_output.buffer) != (uint64)0, halide_error_buffer_argument_is_null("compute_cost_output"))
+assert((uint64)reinterpret((halide_buffer_t *)bias1.buffer) != (uint64)0, halide_error_buffer_argument_is_null("bias1"))
+let bias1 = (void *)_halide_buffer_get_host((halide_buffer_t *)bias1.buffer)
+let bias1.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)bias1.buffer)
+let bias1.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)bias1.buffer)
+let bias1.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)bias1.buffer)
+let bias1.min.0 = _halide_buffer_get_min((halide_buffer_t *)bias1.buffer, 0)
+let bias1.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)bias1.buffer, 0)
+let bias1.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)bias1.buffer, 0)
+let compute_cost_output = (void *)_halide_buffer_get_host((halide_buffer_t *)compute_cost_output.buffer)
+let compute_cost_output.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)compute_cost_output.buffer)
+let compute_cost_output.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)compute_cost_output.buffer)
+let compute_cost_output.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)compute_cost_output.buffer)
+let compute_cost_output.min.0 = _halide_buffer_get_min((halide_buffer_t *)compute_cost_output.buffer, 0)
+let compute_cost_output.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)compute_cost_output.buffer, 0)
+let compute_cost_output.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)compute_cost_output.buffer, 0)
+let filter1 = (void *)_halide_buffer_get_host((halide_buffer_t *)filter1.buffer)
+let filter1.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)filter1.buffer)
+let filter1.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)filter1.buffer)
+let filter1.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)filter1.buffer)
+let filter1.min.0 = _halide_buffer_get_min((halide_buffer_t *)filter1.buffer, 0)
+let filter1.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)filter1.buffer, 0)
+let filter1.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)filter1.buffer, 0)
+let filter1.min.1 = _halide_buffer_get_min((halide_buffer_t *)filter1.buffer, 1)
+let filter1.extent.1 = _halide_buffer_get_extent((halide_buffer_t *)filter1.buffer, 1)
+let filter1.stride.1 = _halide_buffer_get_stride((halide_buffer_t *)filter1.buffer, 1)
+let head1_bias = (void *)_halide_buffer_get_host((halide_buffer_t *)head1_bias.buffer)
+let head1_bias.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)head1_bias.buffer)
+let head1_bias.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)head1_bias.buffer)
+let head1_bias.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)head1_bias.buffer)
+let head1_bias.min.0 = _halide_buffer_get_min((halide_buffer_t *)head1_bias.buffer, 0)
+let head1_bias.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)head1_bias.buffer, 0)
+let head1_bias.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)head1_bias.buffer, 0)
+let head1_filter = (void *)_halide_buffer_get_host((halide_buffer_t *)head1_filter.buffer)
+let head1_filter.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)head1_filter.buffer)
+let head1_filter.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)head1_filter.buffer)
+let head1_filter.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)head1_filter.buffer)
+let head1_filter.min.0 = _halide_buffer_get_min((halide_buffer_t *)head1_filter.buffer, 0)
+let head1_filter.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)head1_filter.buffer, 0)
+let head1_filter.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)head1_filter.buffer, 0)
+let head1_filter.min.1 = _halide_buffer_get_min((halide_buffer_t *)head1_filter.buffer, 1)
+let head1_filter.extent.1 = _halide_buffer_get_extent((halide_buffer_t *)head1_filter.buffer, 1)
+let head1_filter.stride.1 = _halide_buffer_get_stride((halide_buffer_t *)head1_filter.buffer, 1)
+let head1_filter.min.2 = _halide_buffer_get_min((halide_buffer_t *)head1_filter.buffer, 2)
+let head1_filter.extent.2 = _halide_buffer_get_extent((halide_buffer_t *)head1_filter.buffer, 2)
+let head1_filter.stride.2 = _halide_buffer_get_stride((halide_buffer_t *)head1_filter.buffer, 2)
+let head2_bias = (void *)_halide_buffer_get_host((halide_buffer_t *)head2_bias.buffer)
+let head2_bias.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)head2_bias.buffer)
+let head2_bias.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)head2_bias.buffer)
+let head2_bias.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)head2_bias.buffer)
+let head2_bias.min.0 = _halide_buffer_get_min((halide_buffer_t *)head2_bias.buffer, 0)
+let head2_bias.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)head2_bias.buffer, 0)
+let head2_bias.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)head2_bias.buffer, 0)
+let head2_filter = (void *)_halide_buffer_get_host((halide_buffer_t *)head2_filter.buffer)
+let head2_filter.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)head2_filter.buffer)
+let head2_filter.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)head2_filter.buffer)
+let head2_filter.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)head2_filter.buffer)
+let head2_filter.min.0 = _halide_buffer_get_min((halide_buffer_t *)head2_filter.buffer, 0)
+let head2_filter.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)head2_filter.buffer, 0)
+let head2_filter.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)head2_filter.buffer, 0)
+let head2_filter.min.1 = _halide_buffer_get_min((halide_buffer_t *)head2_filter.buffer, 1)
+let head2_filter.extent.1 = _halide_buffer_get_extent((halide_buffer_t *)head2_filter.buffer, 1)
+let head2_filter.stride.1 = _halide_buffer_get_stride((halide_buffer_t *)head2_filter.buffer, 1)
+let load_cost_output = (void *)_halide_buffer_get_host((halide_buffer_t *)load_cost_output.buffer)
+let load_cost_output.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)load_cost_output.buffer)
+let load_cost_output.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)load_cost_output.buffer)
+let load_cost_output.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)load_cost_output.buffer)
+let load_cost_output.min.0 = _halide_buffer_get_min((halide_buffer_t *)load_cost_output.buffer, 0)
+let load_cost_output.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)load_cost_output.buffer, 0)
+let load_cost_output.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)load_cost_output.buffer, 0)
+let loss_output = (void *)_halide_buffer_get_host((halide_buffer_t *)loss_output.buffer)
+let loss_output.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)loss_output.buffer)
+let loss_output.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)loss_output.buffer)
+let loss_output.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)loss_output.buffer)
+let pipeline_features = (void *)_halide_buffer_get_host((halide_buffer_t *)pipeline_features.buffer)
+let pipeline_features.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)pipeline_features.buffer)
+let pipeline_features.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)pipeline_features.buffer)
+let pipeline_features.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)pipeline_features.buffer)
+let pipeline_features.min.0 = _halide_buffer_get_min((halide_buffer_t *)pipeline_features.buffer, 0)
+let pipeline_features.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)pipeline_features.buffer, 0)
+let pipeline_features.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)pipeline_features.buffer, 0)
+let pipeline_features.min.1 = _halide_buffer_get_min((halide_buffer_t *)pipeline_features.buffer, 1)
+let pipeline_features.extent.1 = _halide_buffer_get_extent((halide_buffer_t *)pipeline_features.buffer, 1)
+let pipeline_features.stride.1 = _halide_buffer_get_stride((halide_buffer_t *)pipeline_features.buffer, 1)
+let pipeline_features.min.2 = _halide_buffer_get_min((halide_buffer_t *)pipeline_features.buffer, 2)
+let pipeline_features.extent.2 = _halide_buffer_get_extent((halide_buffer_t *)pipeline_features.buffer, 2)
+let pipeline_features.stride.2 = _halide_buffer_get_stride((halide_buffer_t *)pipeline_features.buffer, 2)
+let prediction_output = (void *)_halide_buffer_get_host((halide_buffer_t *)prediction_output.buffer)
+let prediction_output.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)prediction_output.buffer)
+let prediction_output.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)prediction_output.buffer)
+let prediction_output.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)prediction_output.buffer)
+let prediction_output.min.0 = _halide_buffer_get_min((halide_buffer_t *)prediction_output.buffer, 0)
+let prediction_output.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)prediction_output.buffer, 0)
+let prediction_output.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)prediction_output.buffer, 0)
+let schedule_features = (void *)_halide_buffer_get_host((halide_buffer_t *)schedule_features.buffer)
+let schedule_features.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)schedule_features.buffer)
+let schedule_features.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)schedule_features.buffer)
+let schedule_features.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)schedule_features.buffer)
+let schedule_features.min.0 = _halide_buffer_get_min((halide_buffer_t *)schedule_features.buffer, 0)
+let schedule_features.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)schedule_features.buffer, 0)
+let schedule_features.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)schedule_features.buffer, 0)
+let schedule_features.min.1 = _halide_buffer_get_min((halide_buffer_t *)schedule_features.buffer, 1)
+let schedule_features.extent.1 = _halide_buffer_get_extent((halide_buffer_t *)schedule_features.buffer, 1)
+let schedule_features.stride.1 = _halide_buffer_get_stride((halide_buffer_t *)schedule_features.buffer, 1)
+let schedule_features.min.2 = _halide_buffer_get_min((halide_buffer_t *)schedule_features.buffer, 2)
+let schedule_features.extent.2 = _halide_buffer_get_extent((halide_buffer_t *)schedule_features.buffer, 2)
+let schedule_features.stride.2 = _halide_buffer_get_stride((halide_buffer_t *)schedule_features.buffer, 2)
+let store_cost_output = (void *)_halide_buffer_get_host((halide_buffer_t *)store_cost_output.buffer)
+let store_cost_output.type = (uint32)_halide_buffer_get_type((halide_buffer_t *)store_cost_output.buffer)
+let store_cost_output.device_dirty = (uint1)_halide_buffer_get_device_dirty((halide_buffer_t *)store_cost_output.buffer)
+let store_cost_output.dimensions = _halide_buffer_get_dimensions((halide_buffer_t *)store_cost_output.buffer)
+let store_cost_output.min.0 = _halide_buffer_get_min((halide_buffer_t *)store_cost_output.buffer, 0)
+let store_cost_output.extent.0 = _halide_buffer_get_extent((halide_buffer_t *)store_cost_output.buffer, 0)
+let store_cost_output.stride.0 = _halide_buffer_get_stride((halide_buffer_t *)store_cost_output.buffer, 0)
+let relu1.s0.n.max.s = max(max(max(load_cost_output.extent.0 + load_cost_output.min.0, store_cost_output.extent.0 + store_cost_output.min.0), compute_cost_output.extent.0 + compute_cost_output.min.0), batch_size)
+let relu1.s0.n.min.s = min(min(load_cost_output.min.0, store_cost_output.min.0), compute_cost_output.min.0)
+let filter1.extent.1.required.s = max(head1_filter.extent.0, -16) - min(head1_filter.extent.0, 0)
+let prediction_output.extent.0.required.s = select(batch_size < 8, batch_size + -1, (min(((batch_size + -1)/8)*8, batch_size + -8) - min(batch_size, 8)) + 15)
+let prediction_output.min.0.required = select(batch_size < 8, 0, min(batch_size, 8) + -8)
+let schedule_features.extent.0.required = max(max(max(max(load_cost_output.extent.0 + load_cost_output.min.0, relu1.s0.n.max.s), store_cost_output.extent.0 + store_cost_output.min.0), compute_cost_output.extent.0 + compute_cost_output.min.0), select(batch_size < 8, batch_size + -1, min(((batch_size + -1)/8)*8, batch_size + -8) + 7) + 1) - min(min(min(min(prediction_output.min.0.required, relu1.s0.n.min.s), load_cost_output.min.0), store_cost_output.min.0), compute_cost_output.min.0)
+let schedule_features.min.0.required = min(min(min(min(prediction_output.min.0.required, relu1.s0.n.min.s), load_cost_output.min.0), store_cost_output.min.0), compute_cost_output.min.0)
+assert(!(uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)filter1.buffer) || ((0 <= head1_filter.extent.0) && ((min(head1_filter.extent.0, 0) + filter1.extent.1.required.s) <= 8)), halide_error_constraints_make_required_region_smaller("Input buffer filter1", 1, 0, 31, min(head1_filter.extent.0, 0), (min(head1_filter.extent.0, 0) + filter1.extent.1.required.s) + 23))
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)bias1.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)bias1.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)bias1.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 1, (halide_dimension_t *)make_struct(0, 32, 1, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)compute_cost_output.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)compute_cost_output.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)compute_cost_output.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 1, (halide_dimension_t *)make_struct(compute_cost_output.min.0, compute_cost_output.extent.0, 1, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)filter1.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)filter1.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)filter1.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 2, (halide_dimension_t *)make_struct(0, 32, 1, 0, 0, 32, 32, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head1_bias.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)head1_bias.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)head1_bias.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 1, (halide_dimension_t *)make_struct(0, 8, 1, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head1_filter.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)head1_filter.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)head1_filter.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 3, (halide_dimension_t *)make_struct(0, 8, 1, 0, 0, 40, 8, 0, 0, 7, 320, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head2_bias.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)head2_bias.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)head2_bias.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 1, (halide_dimension_t *)make_struct(0, 24, 1, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head2_filter.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)head2_filter.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)head2_filter.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 2, (halide_dimension_t *)make_struct(0, 24, 1, 0, 0, 39, 24, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)load_cost_output.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)load_cost_output.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)load_cost_output.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 1, (halide_dimension_t *)make_struct(load_cost_output.min.0, load_cost_output.extent.0, 1, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)loss_output.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)loss_output.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)loss_output.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 0, (halide_dimension_t *)make_struct(), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)pipeline_features.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)pipeline_features.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)pipeline_features.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 3, (halide_dimension_t *)make_struct(0, 40, 1, 0, 0, 7, 40, 0, 0, num_stages, 280, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)prediction_output.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)prediction_output.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)prediction_output.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 1, (halide_dimension_t *)make_struct(prediction_output.min.0.required, prediction_output.extent.0.required.s + 1, 1, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)schedule_features.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)schedule_features.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)schedule_features.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 3, (halide_dimension_t *)make_struct(schedule_features.min.0.required, schedule_features.extent.0.required, 1, 0, 0, 39, schedule_features.extent.0.required, 0, 0, ((num_stages + 3)/4)*4, schedule_features.extent.0.required*39, 0), (uint64)0)
+}
+if ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)store_cost_output.buffer)) {
+ (halide_buffer_t *)_halide_buffer_init((halide_buffer_t *)store_cost_output.buffer, (halide_dimension_t *)_halide_buffer_get_shape((halide_buffer_t *)store_cost_output.buffer), (void *)reinterpret((uint64)0), (uint64)0, (halide_device_interface_t *)reinterpret((uint64)0), 2, 32, 1, (halide_dimension_t *)make_struct(store_cost_output.min.0, store_cost_output.extent.0, 1, 0), (uint64)0)
+}
+if (!((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)store_cost_output.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)schedule_features.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)prediction_output.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)pipeline_features.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)loss_output.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)load_cost_output.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head2_filter.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head2_bias.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head1_filter.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)head1_bias.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)filter1.buffer) || ((uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)bias1.buffer) || (uint1)_halide_buffer_is_bounds_query((halide_buffer_t *)compute_cost_output.buffer)))))))))))))) {
+ assert(bias1.type == (uint32)73730, halide_error_bad_type("Input buffer bias1", bias1.type, (uint32)73730))
+ assert(bias1.dimensions == 1, halide_error_bad_dimensions("Input buffer bias1", bias1.dimensions, 1))
+ assert(compute_cost_output.type == (uint32)73730, halide_error_bad_type("Output buffer compute_cost_output", compute_cost_output.type, (uint32)73730))
+ assert(compute_cost_output.dimensions == 1, halide_error_bad_dimensions("Output buffer compute_cost_output", compute_cost_output.dimensions, 1))
+ assert(filter1.type == (uint32)73730, halide_error_bad_type("Input buffer filter1", filter1.type, (uint32)73730))
+ assert(filter1.dimensions == 2, halide_error_bad_dimensions("Input buffer filter1", filter1.dimensions, 2))
+ assert(head1_bias.type == (uint32)73730, halide_error_bad_type("Input buffer head1_bias", head1_bias.type, (uint32)73730))
+ assert(head1_bias.dimensions == 1, halide_error_bad_dimensions("Input buffer head1_bias", head1_bias.dimensions, 1))
+ assert(head1_filter.type == (uint32)73730, halide_error_bad_type("Input buffer head1_filter", head1_filter.type, (uint32)73730))
+ assert(head1_filter.dimensions == 3, halide_error_bad_dimensions("Input buffer head1_filter", head1_filter.dimensions, 3))
+ assert(head2_bias.type == (uint32)73730, halide_error_bad_type("Input buffer head2_bias", head2_bias.type, (uint32)73730))
+ assert(head2_bias.dimensions == 1, halide_error_bad_dimensions("Input buffer head2_bias", head2_bias.dimensions, 1))
+ assert(head2_filter.type == (uint32)73730, halide_error_bad_type("Input buffer head2_filter", head2_filter.type, (uint32)73730))
+ assert(head2_filter.dimensions == 2, halide_error_bad_dimensions("Input buffer head2_filter", head2_filter.dimensions, 2))
+ assert(load_cost_output.type == (uint32)73730, halide_error_bad_type("Output buffer load_cost_output", load_cost_output.type, (uint32)73730))
+ assert(load_cost_output.dimensions == 1, halide_error_bad_dimensions("Output buffer load_cost_output", load_cost_output.dimensions, 1))
+ assert(loss_output.type == (uint32)73730, halide_error_bad_type("Output buffer loss_output", loss_output.type, (uint32)73730))
+ assert(loss_output.dimensions == 0, halide_error_bad_dimensions("Output buffer loss_output", loss_output.dimensions, 0))
+ assert(pipeline_features.type == (uint32)73730, halide_error_bad_type("Input buffer pipeline_features", pipeline_features.type, (uint32)73730))
+ assert(pipeline_features.dimensions == 3, halide_error_bad_dimensions("Input buffer pipeline_features", pipeline_features.dimensions, 3))
+ assert(prediction_output.type == (uint32)73730, halide_error_bad_type("Output buffer prediction_output", prediction_output.type, (uint32)73730))
+ assert(prediction_output.dimensions == 1, halide_error_bad_dimensions("Output buffer prediction_output", prediction_output.dimensions, 1))
+ assert(schedule_features.type == (uint32)73730, halide_error_bad_type("Input buffer schedule_features", schedule_features.type, (uint32)73730))
+ assert(schedule_features.dimensions == 3, halide_error_bad_dimensions("Input buffer schedule_features", schedule_features.dimensions, 3))
+ assert(store_cost_output.type == (uint32)73730, halide_error_bad_type("Output buffer store_cost_output", store_cost_output.type, (uint32)73730))
+ assert(store_cost_output.dimensions == 1, halide_error_bad_dimensions("Output buffer store_cost_output", store_cost_output.dimensions, 1))
+ assert((bias1.min.0 <= 0) && (32 <= (bias1.extent.0 + bias1.min.0)), halide_error_access_out_of_bounds("Input buffer bias1", 0, 0, 31, bias1.min.0, (bias1.extent.0 + bias1.min.0) + -1))
+ assert(0 <= bias1.extent.0, halide_error_buffer_extents_negative("Input buffer bias1", 0, bias1.extent.0))
+ assert(0 <= compute_cost_output.extent.0, halide_error_buffer_extents_negative("Output buffer compute_cost_output", 0, compute_cost_output.extent.0))
+ assert((filter1.min.0 <= 0) && (32 <= (filter1.extent.0 + filter1.min.0)), halide_error_access_out_of_bounds("Input buffer filter1", 0, 0, 31, filter1.min.0, (filter1.extent.0 + filter1.min.0) + -1))
+ assert(0 <= filter1.extent.0, halide_error_buffer_extents_negative("Input buffer filter1", 0, filter1.extent.0))
+ assert((filter1.min.1 <= min(head1_filter.extent.0, 0)) && (((min(head1_filter.extent.0, 0) + filter1.extent.1.required.s) + 24) <= (filter1.extent.1 + filter1.min.1)), halide_error_access_out_of_bounds("Input buffer filter1", 1, min(head1_filter.extent.0, 0), (min(head1_filter.extent.0, 0) + filter1.extent.1.required.s) + 23, filter1.min.1, (filter1.extent.1 + filter1.min.1) + -1))
+ assert(0 <= filter1.extent.1, halide_error_buffer_extents_negative("Input buffer filter1", 1, filter1.extent.1))
+ assert((head1_bias.min.0 <= 0) && (8 <= (head1_bias.extent.0 + head1_bias.min.0)), halide_error_access_out_of_bounds("Input buffer head1_bias", 0, 0, 7, head1_bias.min.0, (head1_bias.extent.0 + head1_bias.min.0) + -1))
+ assert(0 <= head1_bias.extent.0, halide_error_buffer_extents_negative("Input buffer head1_bias", 0, head1_bias.extent.0))
+ assert((head1_filter.min.0 <= 0) && (8 <= (head1_filter.extent.0 + head1_filter.min.0)), halide_error_access_out_of_bounds("Input buffer head1_filter", 0, 0, 7, head1_filter.min.0, (head1_filter.extent.0 + head1_filter.min.0) + -1))
+ assert(0 <= head1_filter.extent.0, halide_error_buffer_extents_negative("Input buffer head1_filter", 0, head1_filter.extent.0))
+ assert((head1_filter.min.1 <= 0) && (40 <= (head1_filter.extent.1 + head1_filter.min.1)), halide_error_access_out_of_bounds("Input buffer head1_filter", 1, 0, 39, head1_filter.min.1, (head1_filter.extent.1 + head1_filter.min.1) + -1))
+ assert(0 <= head1_filter.extent.1, halide_error_buffer_extents_negative("Input buffer head1_filter", 1, head1_filter.extent.1))
+ assert((head1_filter.min.2 <= 0) && (7 <= (head1_filter.extent.2 + head1_filter.min.2)), halide_error_access_out_of_bounds("Input buffer head1_filter", 2, 0, 6, head1_filter.min.2, (head1_filter.extent.2 + head1_filter.min.2) + -1))
+ assert(0 <= head1_filter.extent.2, halide_error_buffer_extents_negative("Input buffer head1_filter", 2, head1_filter.extent.2))
+ assert((head2_bias.min.0 <= 0) && (24 <= (head2_bias.extent.0 + head2_bias.min.0)), halide_error_access_out_of_bounds("Input buffer head2_bias", 0, 0, 23, head2_bias.min.0, (head2_bias.extent.0 + head2_bias.min.0) + -1))
+ assert(0 <= head2_bias.extent.0, halide_error_buffer_extents_negative("Input buffer head2_bias", 0, head2_bias.extent.0))
+ assert((head2_filter.min.0 <= 0) && (24 <= (head2_filter.extent.0 + head2_filter.min.0)), halide_error_access_out_of_bounds("Input buffer head2_filter", 0, 0, 23, head2_filter.min.0, (head2_filter.extent.0 + head2_filter.min.0) + -1))
+ assert(0 <= head2_filter.extent.0, halide_error_buffer_extents_negative("Input buffer head2_filter", 0, head2_filter.extent.0))
+ assert((head2_filter.min.1 <= 0) && (39 <= (head2_filter.extent.1 + head2_filter.min.1)), halide_error_access_out_of_bounds("Input buffer head2_filter", 1, 0, 38, head2_filter.min.1, (head2_filter.extent.1 + head2_filter.min.1) + -1))
+ assert(0 <= head2_filter.extent.1, halide_error_buffer_extents_negative("Input buffer head2_filter", 1, head2_filter.extent.1))
+ assert(0 <= load_cost_output.extent.0, halide_error_buffer_extents_negative("Output buffer load_cost_output", 0, load_cost_output.extent.0))
+ assert((pipeline_features.min.0 <= 0) && (40 <= (pipeline_features.extent.0 + pipeline_features.min.0)), halide_error_access_out_of_bounds("Input buffer pipeline_features", 0, 0, 39, pipeline_features.min.0, (pipeline_features.extent.0 + pipeline_features.min.0) + -1))
+ assert(0 <= pipeline_features.extent.0, halide_error_buffer_extents_negative("Input buffer pipeline_features", 0, pipeline_features.extent.0))
+ assert((pipeline_features.min.1 <= 0) && (7 <= (pipeline_features.extent.1 + pipeline_features.min.1)), halide_error_access_out_of_bounds("Input buffer pipeline_features", 1, 0, 6, pipeline_features.min.1, (pipeline_features.extent.1 + pipeline_features.min.1) + -1))
+ assert(0 <= pipeline_features.extent.1, halide_error_buffer_extents_negative("Input buffer pipeline_features", 1, pipeline_features.extent.1))
+ assert((pipeline_features.min.2 <= 0) && (num_stages <= (pipeline_features.extent.2 + pipeline_features.min.2)), halide_error_access_out_of_bounds("Input buffer pipeline_features", 2, 0, num_stages + -1, pipeline_features.min.2, (pipeline_features.extent.2 + pipeline_features.min.2) + -1))
+ assert(0 <= pipeline_features.extent.2, halide_error_buffer_extents_negative("Input buffer pipeline_features", 2, pipeline_features.extent.2))
+ assert((prediction_output.min.0 <= prediction_output.min.0.required) && (((prediction_output.extent.0.required.s + prediction_output.min.0.required) + 1) <= (prediction_output.extent.0 + prediction_output.min.0)), halide_error_access_out_of_bounds("Output buffer prediction_output", 0, prediction_output.min.0.required, prediction_output.extent.0.required.s + prediction_output.min.0.required, prediction_output.min.0, (prediction_output.extent.0 + prediction_output.min.0) + -1))
+ assert(0 <= prediction_output.extent.0, halide_error_buffer_extents_negative("Output buffer prediction_output", 0, prediction_output.extent.0))
+ assert((schedule_features.min.0 <= schedule_features.min.0.required) && ((schedule_features.extent.0.required + schedule_features.min.0.required) <= (schedule_features.extent.0 + schedule_features.min.0)), halide_error_access_out_of_bounds("Input buffer schedule_features", 0, schedule_features.min.0.required, (schedule_features.extent.0.required + schedule_features.min.0.required) + -1, schedule_features.min.0, (schedule_features.extent.0 + schedule_features.min.0) + -1))
+ assert(0 <= schedule_features.extent.0, halide_error_buffer_extents_negative("Input buffer schedule_features", 0, schedule_features.extent.0))
+ assert((schedule_features.min.1 <= 0) && (39 <= (schedule_features.extent.1 + schedule_features.min.1)), halide_error_access_out_of_bounds("Input buffer schedule_features", 1, 0, 38, schedule_features.min.1, (schedule_features.extent.1 + schedule_features.min.1) + -1))
+ assert(0 <= schedule_features.extent.1, halide_error_buffer_extents_negative("Input buffer schedule_features", 1, schedule_features.extent.1))
+ assert((schedule_features.min.2 <= 0) && ((((num_stages + 3)/4)*4) <= (schedule_features.extent.2 + schedule_features.min.2)), halide_error_access_out_of_bounds("Input buffer schedule_features", 2, 0, (((num_stages + 3)/4)*4) + -1, schedule_features.min.2, (schedule_features.extent.2 + schedule_features.min.2) + -1))
+ assert(0 <= schedule_features.extent.2, halide_error_buffer_extents_negative("Input buffer schedule_features", 2, schedule_features.extent.2))
+ assert(0 <= store_cost_output.extent.0, halide_error_buffer_extents_negative("Output buffer store_cost_output", 0, store_cost_output.extent.0))
+ assert(bias1.stride.0 == 1, halide_error_constraint_violated("bias1.stride.0", bias1.stride.0, "1", 1))
+ assert(bias1.min.0 == 0, halide_error_constraint_violated("bias1.min.0", bias1.min.0, "0", 0))
+ assert(bias1.extent.0 == 32, halide_error_constraint_violated("bias1.extent.0", bias1.extent.0, "32", 32))
+ assert(compute_cost_output.stride.0 == 1, halide_error_constraint_violated("compute_cost_output.stride.0", compute_cost_output.stride.0, "1", 1))
+ assert(filter1.stride.0 == 1, halide_error_constraint_violated("filter1.stride.0", filter1.stride.0, "1", 1))
+ assert(filter1.min.0 == 0, halide_error_constraint_violated("filter1.min.0", filter1.min.0, "0", 0))
+ assert(filter1.extent.0 == 32, halide_error_constraint_violated("filter1.extent.0", filter1.extent.0, "32", 32))
+ assert(filter1.min.1 == 0, halide_error_constraint_violated("filter1.min.1", filter1.min.1, "0", 0))
+ assert(filter1.extent.1 == 32, halide_error_constraint_violated("filter1.extent.1", filter1.extent.1, "32", 32))
+ assert(head1_bias.stride.0 == 1, halide_error_constraint_violated("head1_bias.stride.0", head1_bias.stride.0, "1", 1))
+ assert(head1_bias.min.0 == 0, halide_error_constraint_violated("head1_bias.min.0", head1_bias.min.0, "0", 0))
+ assert(head1_bias.extent.0 == 8, halide_error_constraint_violated("head1_bias.extent.0", head1_bias.extent.0, "8", 8))
+ assert(head1_filter.stride.0 == 1, halide_error_constraint_violated("head1_filter.stride.0", head1_filter.stride.0, "1", 1))
+ assert(head1_filter.min.0 == 0, halide_error_constraint_violated("head1_filter.min.0", head1_filter.min.0, "0", 0))
+ assert(head1_filter.extent.0 == 8, halide_error_constraint_violated("head1_filter.extent.0", head1_filter.extent.0, "8", 8))
+ assert(head1_filter.min.1 == 0, halide_error_constraint_violated("head1_filter.min.1", head1_filter.min.1, "0", 0))
+ assert(head1_filter.extent.1 == 40, halide_error_constraint_violated("head1_filter.extent.1", head1_filter.extent.1, "40", 40))
+ assert(head1_filter.min.2 == 0, halide_error_constraint_violated("head1_filter.min.2", head1_filter.min.2, "0", 0))
+ assert(head1_filter.extent.2 == 7, halide_error_constraint_violated("head1_filter.extent.2", head1_filter.extent.2, "7", 7))
+ assert(head2_bias.stride.0 == 1, halide_error_constraint_violated("head2_bias.stride.0", head2_bias.stride.0, "1", 1))
+ assert(head2_bias.min.0 == 0, halide_error_constraint_violated("head2_bias.min.0", head2_bias.min.0, "0", 0))
+ assert(head2_bias.extent.0 == 24, halide_error_constraint_violated("head2_bias.extent.0", head2_bias.extent.0, "24", 24))
+ assert(head2_filter.stride.0 == 1, halide_error_constraint_violated("head2_filter.stride.0", head2_filter.stride.0, "1", 1))
+ assert(head2_filter.min.0 == 0, halide_error_constraint_violated("head2_filter.min.0", head2_filter.min.0, "0", 0))
+ assert(head2_filter.extent.0 == 24, halide_error_constraint_violated("head2_filter.extent.0", head2_filter.extent.0, "24", 24))
+ assert(head2_filter.min.1 == 0, halide_error_constraint_violated("head2_filter.min.1", head2_filter.min.1, "0", 0))
+ assert(head2_filter.extent.1 == 39, halide_error_constraint_violated("head2_filter.extent.1", head2_filter.extent.1, "39", 39))
+ assert(load_cost_output.stride.0 == 1, halide_error_constraint_violated("load_cost_output.stride.0", load_cost_output.stride.0, "1", 1))
+ assert(pipeline_features.stride.0 == 1, halide_error_constraint_violated("pipeline_features.stride.0", pipeline_features.stride.0, "1", 1))
+ assert(prediction_output.stride.0 == 1, halide_error_constraint_violated("prediction_output.stride.0", prediction_output.stride.0, "1", 1))
+ assert(schedule_features.stride.0 == 1, halide_error_constraint_violated("schedule_features.stride.0", schedule_features.stride.0, "1", 1))
+ assert(store_cost_output.stride.0 == 1, halide_error_constraint_violated("store_cost_output.stride.0", store_cost_output.stride.0, "1", 1))
+ let pipeline_features.total_extent.1 = int64(pipeline_features.extent.1)*int64(pipeline_features.extent.0)
+ let pipeline_features.total_extent.2 = pipeline_features.total_extent.1*int64(pipeline_features.extent.2)
+ let schedule_features.total_extent.1 = int64(schedule_features.extent.1)*int64(schedule_features.extent.0)
+ let schedule_features.total_extent.2 = schedule_features.total_extent.1*int64(schedule_features.extent.2)
+ assert((uint64)abs(int64(compute_cost_output.extent.0)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("compute_cost_output", (uint64)abs(int64(compute_cost_output.extent.0)), (uint64)2147483647))
+ assert((uint64)abs(int64(filter1.stride.1)*(int64)32) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("filter1", (uint64)abs(int64(filter1.stride.1)*(int64)32), (uint64)2147483647))
+ assert((uint64)abs(int64(head1_filter.stride.1)*(int64)40) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("head1_filter", (uint64)abs(int64(head1_filter.stride.1)*(int64)40), (uint64)2147483647))
+ assert((uint64)abs(int64(head1_filter.stride.2)*(int64)7) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("head1_filter", (uint64)abs(int64(head1_filter.stride.2)*(int64)7), (uint64)2147483647))
+ assert((uint64)abs(int64(head2_filter.stride.1)*(int64)39) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("head2_filter", (uint64)abs(int64(head2_filter.stride.1)*(int64)39), (uint64)2147483647))
+ assert((uint64)abs(int64(load_cost_output.extent.0)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("load_cost_output", (uint64)abs(int64(load_cost_output.extent.0)), (uint64)2147483647))
+ assert((uint64)abs(int64(pipeline_features.extent.0)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("pipeline_features", (uint64)abs(int64(pipeline_features.extent.0)), (uint64)2147483647))
+ assert((uint64)abs(int64(pipeline_features.extent.1)*int64(pipeline_features.stride.1)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("pipeline_features", (uint64)abs(int64(pipeline_features.extent.1)*int64(pipeline_features.stride.1)), (uint64)2147483647))
+ assert(pipeline_features.total_extent.1 <= (int64)2147483647, halide_error_buffer_extents_too_large("pipeline_features", pipeline_features.total_extent.1, (int64)2147483647))
+ assert((uint64)abs(int64(pipeline_features.extent.2)*int64(pipeline_features.stride.2)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("pipeline_features", (uint64)abs(int64(pipeline_features.extent.2)*int64(pipeline_features.stride.2)), (uint64)2147483647))
+ assert(pipeline_features.total_extent.2 <= (int64)2147483647, halide_error_buffer_extents_too_large("pipeline_features", pipeline_features.total_extent.2, (int64)2147483647))
+ assert((uint64)abs(int64(prediction_output.extent.0)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("prediction_output", (uint64)abs(int64(prediction_output.extent.0)), (uint64)2147483647))
+ assert((uint64)abs(int64(schedule_features.extent.0)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("schedule_features", (uint64)abs(int64(schedule_features.extent.0)), (uint64)2147483647))
+ assert((uint64)abs(int64(schedule_features.extent.1)*int64(schedule_features.stride.1)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("schedule_features", (uint64)abs(int64(schedule_features.extent.1)*int64(schedule_features.stride.1)), (uint64)2147483647))
+ assert(schedule_features.total_extent.1 <= (int64)2147483647, halide_error_buffer_extents_too_large("schedule_features", schedule_features.total_extent.1, (int64)2147483647))
+ assert((uint64)abs(int64(schedule_features.extent.2)*int64(schedule_features.stride.2)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("schedule_features", (uint64)abs(int64(schedule_features.extent.2)*int64(schedule_features.stride.2)), (uint64)2147483647))
+ assert(schedule_features.total_extent.2 <= (int64)2147483647, halide_error_buffer_extents_too_large("schedule_features", schedule_features.total_extent.2, (int64)2147483647))
+ assert((uint64)abs(int64(store_cost_output.extent.0)) <= (uint64)2147483647, halide_error_buffer_allocation_too_large("store_cost_output", (uint64)abs(int64(store_cost_output.extent.0)), (uint64)2147483647))
+ assert(!bias1.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer bias1"))
+ assert(!compute_cost_output.device_dirty, halide_error_device_dirty_with_no_device_support("Output buffer compute_cost_output"))
+ assert(!filter1.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer filter1"))
+ assert(!head1_bias.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer head1_bias"))
+ assert(!head1_filter.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer head1_filter"))
+ assert(!head2_bias.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer head2_bias"))
+ assert(!head2_filter.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer head2_filter"))
+ assert(!load_cost_output.device_dirty, halide_error_device_dirty_with_no_device_support("Output buffer load_cost_output"))
+ assert(!loss_output.device_dirty, halide_error_device_dirty_with_no_device_support("Output buffer loss_output"))
+ assert(!pipeline_features.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer pipeline_features"))
+ assert(!prediction_output.device_dirty, halide_error_device_dirty_with_no_device_support("Output buffer prediction_output"))
+ assert(!schedule_features.device_dirty, halide_error_device_dirty_with_no_device_support("Input buffer schedule_features"))
+ assert(!store_cost_output.device_dirty, halide_error_device_dirty_with_no_device_support("Output buffer store_cost_output"))
+ assert((void *)reinterpret((uint64)0) != bias1, halide_error_host_is_null("Input buffer bias1"))
+ assert((void *)reinterpret((uint64)0) != compute_cost_output, halide_error_host_is_null("Output buffer compute_cost_output"))
+ assert((void *)reinterpret((uint64)0) != filter1, halide_error_host_is_null("Input buffer filter1"))
+ assert((void *)reinterpret((uint64)0) != head1_bias, halide_error_host_is_null("Input buffer head1_bias"))
+ assert((void *)reinterpret((uint64)0) != head1_filter, halide_error_host_is_null("Input buffer head1_filter"))
+ assert((void *)reinterpret((uint64)0) != head2_bias, halide_error_host_is_null("Input buffer head2_bias"))
+ assert((void *)reinterpret((uint64)0) != head2_filter, halide_error_host_is_null("Input buffer head2_filter"))
+ assert((void *)reinterpret((uint64)0) != load_cost_output, halide_error_host_is_null("Output buffer load_cost_output"))
+ assert((void *)reinterpret((uint64)0) != loss_output, halide_error_host_is_null("Output buffer loss_output"))
+ assert((void *)reinterpret((uint64)0) != pipeline_features, halide_error_host_is_null("Input buffer pipeline_features"))
+ assert((void *)reinterpret((uint64)0) != prediction_output, halide_error_host_is_null("Output buffer prediction_output"))
+ assert((void *)reinterpret((uint64)0) != schedule_features, halide_error_host_is_null("Input buffer schedule_features"))
+ assert((void *)reinterpret((uint64)0) != store_cost_output, halide_error_host_is_null("Output buffer store_cost_output"))
+ allocate squashed_head1_filter[float32 * 8 * 40 * 7]
+ produce squashed_head1_filter {
+  for (squashed_head1_filter.s0.n, 0, 7) {
+   let t2139 = squashed_head1_filter.s0.n*40
+   let t2138 = head1_filter.stride.2*squashed_head1_filter.s0.n
+   for (squashed_head1_filter.s0.s, 0, 40) {
+    squashed_head1_filter[ramp((squashed_head1_filter.s0.s + t2139)*8, 1, 8) aligned(8, 0)] = x8(1.000000f)/((float32x8)exp_f32(x8(0.000000f) - head1_filter[ramp((head1_filter.stride.1*squashed_head1_filter.s0.s) + t2138, 1, 8)]) + x8(1.000000f))
+   }
+  }
+ }
+ allocate conv1_stage1[float32 * 32 * ((((num_stages + -1)/4)*4) + 4)]
+ produce conv1_stage1 {
+  for (conv1_stage1.s0.w, 0, num_stages) {
+   conv1_stage1[ramp(conv1_stage1.s0.w*32, 1, 32) aligned(32, 0)] = bias1[ramp(0, 1, 32)]
+  }
+  consume squashed_head1_filter {
+   let t2140 = ((pipeline_features.min.2*pipeline_features.stride.2) + (pipeline_features.min.1*pipeline_features.stride.1)) + pipeline_features.min.0
+   for (conv1_stage1.s1.w, 0, num_stages) {
+    let t2142 = conv1_stage1.s1.w*32
+    let t2141 = (conv1_stage1.s1.w*pipeline_features.stride.2) - t2140
+    for (conv1_stage1.s1.c, 0, 32) {
+     let t2143 = conv1_stage1.s1.c + t2142
+     for (conv1_stage1.s1.r54$x, 0, 8) {
+      allocate head1_conv[float32 * 1]
+      produce head1_conv {
+       head1_conv[0] = head1_bias[conv1_stage1.s1.r54$x]
+       for (head1_conv.s1.r31$y, 0, 7) {
+        let t2145 = (head1_conv.s1.r31$y*pipeline_features.stride.1) + t2141
+        let t2144 = (head1_conv.s1.r31$y*320) + conv1_stage1.s1.r54$x
+        for (head1_conv.s1.r31$x, 0, 40) {
+         head1_conv[0] = head1_conv[0] + (squashed_head1_filter[(head1_conv.s1.r31$x*8) + t2144]*pipeline_features[head1_conv.s1.r31$x + t2145])
+        }
+       }
+      }
+      consume head1_conv {
+       conv1_stage1[t2143] = conv1_stage1[t2143] + (filter1[(conv1_stage1.s1.r54$x*filter1.stride.1) + conv1_stage1.s1.c]*head1_conv[0])
+      }
+      free head1_conv
+     }
+    }
+   }
+  }
+  free squashed_head1_filter
+ }
+ let head2_relu.n.extent_realized = relu1.s0.n.max.s - min(relu1.s0.n.min.s, 0)
+ allocate head2_relu[float32 * 24 * ((((num_stages + -1)/4)*4) + 4) * head2_relu.n.extent_realized]
+ produce head2_relu {
+  let t2151 = (num_stages + 3)/4
+  let t2146 = min(relu1.s0.n.min.s, 0)
+  let t2150 = ((num_stages + -1)/4)*96
+  let t2148 = ((schedule_features.min.2*schedule_features.stride.2) + (schedule_features.min.1*schedule_features.stride.1)) + schedule_features.min.0
+  for (head2_relu.s0.n, t2146, head2_relu.n.extent_realized) {
+   allocate normalized_schedule_features[float32 * 1 * 39 * (t2151*4)]
+   produce normalized_schedule_features {
+    let t2152 = t2151*4
+    let t2153 = head2_relu.s0.n - t2148
+    for (normalized_schedule_features.s0.s, 0, t2152) {
+     let t2155 = normalized_schedule_features.s0.s*39
+     let t2154 = (normalized_schedule_features.s0.s*schedule_features.stride.2) + t2153
+     for (normalized_schedule_features.s0.c, 0, 39) {
+      let t2052 = reinterpret(schedule_features[(normalized_schedule_features.s0.c*schedule_features.stride.1) + t2154] + 1.000000f)
+      let t2053 = bitwise_and(t2052, -2139095041)
+      let t2054 = (float32)reinterpret(bitwise_or(t2053, (127 - (t2053/4194304))*8388608))
+      let t2055 = (t2054 + -1.000000f)*(t2054 + -1.000000f)
+      normalized_schedule_features[normalized_schedule_features.s0.c + t2155] = (float32((((t2052/8388608) + (t2053/4194304)) + -127))*0.693147f) + ((((((((t2055*0.076403f) + 0.206252f)*t2055) + 0.333205f)*t2055) + 1.000000f)*(t2054 + -1.000000f)) + (((((t2055*-0.162530f) + -0.251103f)*t2055) + -0.499975f)*t2055))
+     }
+    }
+   }
+   consume normalized_schedule_features {
+    let t2156 = (head2_relu.s0.n - t2146)*(t2150 + 96)
+    for (head2_relu.s0.w.w, 0, t2151) {
+     let t2157 = head2_relu.s0.w.w*156
+     let t2158 = head2_relu.s0.w.w*4
+     for (head2_relu.s0.c.c, 0, 3) {
+      allocate head2_conv[float32 * 32]
+      produce head2_conv {
+       head2_conv[ramp(0, 1, 8)] = head2_bias[ramp(head2_relu.s0.c.c*8, 1, 8) aligned(8, 0)]
+       head2_conv[ramp(8, 1, 8)] = head2_bias[ramp(head2_relu.s0.c.c*8, 1, 8) aligned(8, 0)]
+       head2_conv[ramp(16, 1, 8)] = head2_bias[ramp(head2_relu.s0.c.c*8, 1, 8) aligned(8, 0)]
+       head2_conv[ramp(24, 1, 8)] = head2_bias[ramp(head2_relu.s0.c.c*8, 1, 8) aligned(8, 0)]
+       let t2159 = head2_relu.s0.c.c*8
+       for (head2_conv.s1.r40$x, 0, 39) {
+        head2_conv[ramp(0, 1, 8)] = head2_conv[ramp(0, 1, 8)] + (head2_filter[ramp((head2_conv.s1.r40$x*head2_filter.stride.1) + t2159, 1, 8)]*x8(normalized_schedule_features[head2_conv.s1.r40$x + t2157]))
+        head2_conv[ramp(8, 1, 8)] = head2_conv[ramp(8, 1, 8)] + (head2_filter[ramp((head2_conv.s1.r40$x*head2_filter.stride.1) + t2159, 1, 8)]*x8(normalized_schedule_features[(head2_conv.s1.r40$x + t2157) + 39]))
+        head2_conv[ramp(16, 1, 8)] = head2_conv[ramp(16, 1, 8)] + (head2_filter[ramp((head2_conv.s1.r40$x*head2_filter.stride.1) + t2159, 1, 8)]*x8(normalized_schedule_features[(head2_conv.s1.r40$x + t2157) + 78]))
+        head2_conv[ramp(24, 1, 8)] = head2_conv[ramp(24, 1, 8)] + (head2_filter[ramp((head2_conv.s1.r40$x*head2_filter.stride.1) + t2159, 1, 8)]*x8(normalized_schedule_features[(head2_conv.s1.r40$x + t2157) + 117]))
+       }
+      }
+      consume head2_conv {
+       for (head2_relu.s0.w.v15, 0, 4) {
+        head2_relu[ramp(((((head2_relu.s0.w.v15 + t2158)*3) + head2_relu.s0.c.c)*8) + t2156, 1, 8) aligned(8, 0)] = max(head2_conv[ramp(head2_relu.s0.w.v15*8, 1, 8) aligned(8, 0)], x8(0.000000f))
+       }
+      }
+      free head2_conv
+     }
+    }
+   }
+   free normalized_schedule_features
+  }
+ }
+ let relu1.n.min_realized = min(min(min(min(load_cost_output.min.0, prediction_output.min.0.required), store_cost_output.min.0), compute_cost_output.min.0), relu1.s0.n.min.s)
+ let relu1.n.extent_realized.s = max(select(batch_size < 8, batch_size + -1, min(((batch_size + -1)/8)*8, batch_size + -8) + 7), max(max(max(load_cost_output.extent.0 + load_cost_output.min.0, store_cost_output.extent.0 + store_cost_output.min.0), compute_cost_output.extent.0 + compute_cost_output.min.0), relu1.s0.n.max.s) + -1) - min(min(min(min(load_cost_output.min.0, prediction_output.min.0.required), store_cost_output.min.0), compute_cost_output.min.0), relu1.s0.n.min.s)
+ allocate relu1[float32 * 32 * ((((num_stages + -1)/4)*4) + 4) * (relu1.n.extent_realized.s + 1)]
+ produce relu1 {
+  consume head2_relu {
+   consume conv1_stage1 {
+    let t2164 = (num_stages + -1)/4
+    let t2160 = min(relu1.s0.n.min.s, 0)
+    let t2161 = (num_stages + 3)/4
+    let t2163 = t2164*128
+    let t2162 = t2164*96
+    for (relu1.s0.n, t2160, head2_relu.n.extent_realized) {
+     let t2165 = (relu1.s0.n - t2160)*(t2162 + 96)
+     let t2166 = (relu1.s0.n - relu1.n.min_realized)*(t2163 + 128)
+     for (relu1.s0.w.w, 0, t2161) {
+      let t2167 = relu1.s0.w.w*16
+      let t2169 = relu1.s0.w.w*4
+      let t2168 = (relu1.s0.w.w*96) + t2165
+      for (relu1.s0.c.c, 0, 4) {
+       allocate conv1_stage2[float32 * 32]
+       produce conv1_stage2 {
+        conv1_stage2[ramp(0, 1, 8)] = conv1_stage1[ramp((relu1.s0.c.c + t2167)*8, 1, 8) aligned(8, 0)]
+        conv1_stage2[ramp(8, 1, 8)] = conv1_stage1[ramp(((relu1.s0.c.c + t2167)*8) + 32, 1, 8) aligned(8, 0)]
+        conv1_stage2[ramp(16, 1, 8)] = conv1_stage1[ramp(((relu1.s0.c.c + t2167)*8) + 64, 1, 8) aligned(8, 0)]
+        conv1_stage2[ramp(24, 1, 8)] = conv1_stage1[ramp(((relu1.s0.c.c + t2167)*8) + 96, 1, 8) aligned(8, 0)]
+        let t2170 = relu1.s0.c.c*8
+        for (conv1_stage2.s1.r63$x, 0, 24) {
+         conv1_stage2[ramp(0, 1, 8)] = conv1_stage2[ramp(0, 1, 8)] + (filter1[ramp(((conv1_stage2.s1.r63$x + 8)*filter1.stride.1) + t2170, 1, 8)]*x8(head2_relu[conv1_stage2.s1.r63$x + t2168]))
+         conv1_stage2[ramp(8, 1, 8)] = conv1_stage2[ramp(8, 1, 8)] + (filter1[ramp(((conv1_stage2.s1.r63$x + 8)*filter1.stride.1) + t2170, 1, 8)]*x8(head2_relu[(conv1_stage2.s1.r63$x + t2168) + 24]))
+         conv1_stage2[ramp(16, 1, 8)] = conv1_stage2[ramp(16, 1, 8)] + (filter1[ramp(((conv1_stage2.s1.r63$x + 8)*filter1.stride.1) + t2170, 1, 8)]*x8(head2_relu[(conv1_stage2.s1.r63$x + t2168) + 48]))
+         conv1_stage2[ramp(24, 1, 8)] = conv1_stage2[ramp(24, 1, 8)] + (filter1[ramp(((conv1_stage2.s1.r63$x + 8)*filter1.stride.1) + t2170, 1, 8)]*x8(head2_relu[(conv1_stage2.s1.r63$x + t2168) + 72]))
+        }
+       }
+       consume conv1_stage2 {
+        for (relu1.s0.w.v18, 0, 4) {
+         relu1[ramp(((((relu1.s0.w.v18 + t2169)*4) + relu1.s0.c.c)*8) + t2166, 1, 8) aligned(8, 0)] = max(conv1_stage2[ramp(relu1.s0.w.v18*8, 1, 8) aligned(8, 0)], x8(0.000000f))
+        }
+       }
+       free conv1_stage2
+      }
+     }
+    }
+   }
+  }
+ }
+ free conv1_stage1
+ free head2_relu
+ assert((0 <= prediction_output.min.0) && ((prediction_output.extent.0 + prediction_output.min.0) <= batch_size), halide_error_explicit_bounds_too_small("n", "prediction_output", 0, batch_size + -1, prediction_output.min.0, (prediction_output.extent.0 + prediction_output.min.0) + -1))
+ produce prediction_output {
+  consume relu1 {
+   if (batch_size < 8) {
+    let t2172 = ((num_stages + -1)/4)*128
+    let t2171 = ((schedule_features.min.2*schedule_features.stride.2) + (schedule_features.min.1*schedule_features.stride.1)) + schedule_features.min.0
+    let t2178 = float32(num_cores)
+    for (prediction_output.s0.n.v13, 0, batch_size) {
+     allocate f7[float32 * 1]
+     produce f7 {
+      f7[0] = 0.000000f
+      let t2194 = (prediction_output.s0.n.v13 - relu1.n.min_realized)*(t2172 + 128)
+      let t2195 = prediction_output.s0.n.v13 - t2171
+      let t2210 = ((schedule_features.stride.1*34) - t2171) + prediction_output.s0.n.v13
+      let t2211 = ((schedule_features.stride.1*33) - t2171) + prediction_output.s0.n.v13
+      let t2202 = ((schedule_features.stride.1*32) - t2171) + prediction_output.s0.n.v13
+      let t2203 = ((schedule_features.stride.1*31) - t2171) + prediction_output.s0.n.v13
+      let t2201 = ((schedule_features.stride.1*30) - t2171) + prediction_output.s0.n.v13
+      let t2208 = ((schedule_features.stride.1*29) - t2171) + prediction_output.s0.n.v13
+      let t2213 = ((schedule_features.stride.1*28) - t2171) + prediction_output.s0.n.v13
+      let t2212 = ((schedule_features.stride.1*27) - t2171) + prediction_output.s0.n.v13
+      let t2214 = ((schedule_features.stride.1*26) - t2171) + prediction_output.s0.n.v13
+      let t2198 = ((schedule_features.stride.1*25) - t2171) + prediction_output.s0.n.v13
+      let t2196 = ((schedule_features.stride.1*24) - t2171) + prediction_output.s0.n.v13
+      let t2197 = ((schedule_features.stride.1*22) - t2171) + prediction_output.s0.n.v13
+      let t2205 = ((schedule_features.stride.1*21) - t2171) + prediction_output.s0.n.v13
+      let t2215 = ((schedule_features.stride.1*19) - t2171) + prediction_output.s0.n.v13
+      let t2216 = ((schedule_features.stride.1*18) - t2171) + prediction_output.s0.n.v13
+      let t2206 = ((schedule_features.stride.1*17) - t2171) + prediction_output.s0.n.v13
+      let t2207 = ((schedule_features.stride.1*12) - t2171) + prediction_output.s0.n.v13
+      let t2209 = ((schedule_features.stride.1*11) - t2171) + prediction_output.s0.n.v13
+      let t2200 = ((schedule_features.stride.1*10) - t2171) + prediction_output.s0.n.v13
+      let t2199 = ((schedule_features.stride.1*9) - t2171) + prediction_output.s0.n.v13
+      let t2204 = (schedule_features.stride.1 - t2171) + prediction_output.s0.n.v13
+      for (f7.s1.r77$x, 0, num_stages) {
+       let t2060 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2195]
+       let t2061 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2196]
+       let t2062.s = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2197]
+       let t2063 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2198]
+       let t2064 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2199]
+       let t2065 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2200]
+       let t2067 = max(t2064*t2065, 1.000000f)/t2178
+       let t2068.s = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2201]
+       let t2069 = 1.000000f < t2064
+       let t2070 = f7.s1.r77$x == 0
+       let t2071 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2202]
+       let t2072 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2203]
+       let t2073 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2204]
+       let t2120 = f7.s1.r77$x*schedule_features.stride.2
+       let t2121 = (f7.s1.r77$x*32) + t2194
+       let t2122 = t2061*t2062.s
+       let t2123 = max(t2068.s, 1.000000f)
+       let t2124 = max(t2064*t2065, 1.000000f)
+       f7[0] = f7[0] + (((schedule_features[t2120 + t2205]*relu1[t2121 + 27]) + (((relu1[t2121 + 24]*t2060) + (((select(schedule_features[t2120 + t2206] == 0.000000f, (relu1[t2121]*t2122) + (relu1[t2121 + 1]*t2063), (relu1[t2121 + 2]*t2122) + (relu1[t2121 + 3]*t2063))*((float32)ceil_f32(t2067)/max(t2067, 1.000000f))) + (((relu1[t2121 + 23]*(((schedule_features[t2120 + t2207]*min(4096.000000f/t2123, t2064))*t2064)*t2065)) + (select(t2069, (relu1[t2121 + 22]*(t2061 + t2063))/t2123, 0.000000f) + (((select(t2069, relu1[t2121 + 16], select(t2070, relu1[t2121 + 17], relu1[t2121 + 18]))*((schedule_features[t2120 + t2208]/t2123)*t2064)) + (schedule_features[t2120 + t2209]*select(t2069, relu1[t2121 + 19], select(t2070, relu1[t2121 + 20], relu1[t2121 + 21]))))*t2060)))*2.000000f)) + ((relu1[t2121 + 15]*(schedule_features[t2120 + t2210]*t2124)) + ((relu1[t2121 + 14]*(schedule_features[t2120 + t2211]*t2124)) + ((relu1[t2121 + 13]*(t2061*t2071)) + ((relu1[t2121 + 12]*(t2063*t2071)) + ((relu1[t2121 + 11]*(t2061*t2072)) + ((relu1[t2121 + 10]*(t2063*t2072)) + ((relu1[t2121 + 9]*(schedule_features[t2120 + t2212]*t2061)) + ((relu1[t2121 + 8]*(schedule_features[t2120 + t2213]*t2063)) + ((relu1[t2121 + 7]*(schedule_features[t2120 + t2214]*t2061)) + ((relu1[t2121 + 5]*(schedule_features[t2120 + t2215]*t2060)) + (relu1[t2121 + 6]*(schedule_features[t2120 + t2216]*t2060)))))))))))))) + ((relu1[t2121 + 26]*((t2064 + -1.000000f)*t2073)) + (select(t2069, relu1[t2121 + 25], 0.000000f)*t2073))))*0.000000f)
+      }
+     }
+     consume f7 {
+      prediction_output[prediction_output.s0.n.v13] = f7[0]
+     }
+     free f7
+    }
+   } else {
+    let t2217 = (batch_size + 7)/8
+    let t2219 = ((num_stages + -1)/4)*128
+    let t2218 = ((schedule_features.min.2*schedule_features.stride.2) + (schedule_features.min.1*schedule_features.stride.1)) + schedule_features.min.0
+    let t2225 = float32(num_cores)
+    parallel (prediction_output.s0.n.v13, 0, t2217) {
+     let prediction_output.s0.n.n.base = min(prediction_output.s0.n.v13*8, batch_size + -8)
+     let t2242 = prediction_output.s0.n.n.base - t2218
+     let t2241 = prediction_output.s0.n.n.base - relu1.n.min_realized
+     let t2257 = ((schedule_features.stride.1*34) - t2218) + prediction_output.s0.n.n.base
+     let t2258 = ((schedule_features.stride.1*33) - t2218) + prediction_output.s0.n.n.base
+     let t2249 = ((schedule_features.stride.1*32) - t2218) + prediction_output.s0.n.n.base
+     let t2250 = ((schedule_features.stride.1*31) - t2218) + prediction_output.s0.n.n.base
+     let t2248 = ((schedule_features.stride.1*30) - t2218) + prediction_output.s0.n.n.base
+     let t2255 = ((schedule_features.stride.1*29) - t2218) + prediction_output.s0.n.n.base
+     let t2260 = ((schedule_features.stride.1*28) - t2218) + prediction_output.s0.n.n.base
+     let t2259 = ((schedule_features.stride.1*27) - t2218) + prediction_output.s0.n.n.base
+     let t2261 = ((schedule_features.stride.1*26) - t2218) + prediction_output.s0.n.n.base
+     let t2245 = ((schedule_features.stride.1*25) - t2218) + prediction_output.s0.n.n.base
+     let t2243 = ((schedule_features.stride.1*24) - t2218) + prediction_output.s0.n.n.base
+     let t2244 = ((schedule_features.stride.1*22) - t2218) + prediction_output.s0.n.n.base
+     let t2252 = ((schedule_features.stride.1*21) - t2218) + prediction_output.s0.n.n.base
+     let t2262 = ((schedule_features.stride.1*19) - t2218) + prediction_output.s0.n.n.base
+     let t2263 = ((schedule_features.stride.1*18) - t2218) + prediction_output.s0.n.n.base
+     let t2253 = ((schedule_features.stride.1*17) - t2218) + prediction_output.s0.n.n.base
+     let t2254 = ((schedule_features.stride.1*12) - t2218) + prediction_output.s0.n.n.base
+     let t2256 = ((schedule_features.stride.1*11) - t2218) + prediction_output.s0.n.n.base
+     let t2247 = ((schedule_features.stride.1*10) - t2218) + prediction_output.s0.n.n.base
+     let t2246 = ((schedule_features.stride.1*9) - t2218) + prediction_output.s0.n.n.base
+     let t2251 = (schedule_features.stride.1 - t2218) + prediction_output.s0.n.n.base
+     for (prediction_output.s0.n.n, 0, 8) {
+      allocate f7[float32 * 1]
+      produce f7 {
+       f7[0] = 0.000000f
+       let t2264 = (prediction_output.s0.n.n + t2241)*(t2219 + 128)
+       let t2286 = prediction_output.s0.n.n + t2263
+       let t2285 = prediction_output.s0.n.n + t2262
+       let t2284 = prediction_output.s0.n.n + t2261
+       let t2283 = prediction_output.s0.n.n + t2260
+       let t2282 = prediction_output.s0.n.n + t2259
+       let t2281 = prediction_output.s0.n.n + t2258
+       let t2280 = prediction_output.s0.n.n + t2257
+       let t2279 = prediction_output.s0.n.n + t2256
+       let t2278 = prediction_output.s0.n.n + t2255
+       let t2277 = prediction_output.s0.n.n + t2254
+       let t2276 = prediction_output.s0.n.n + t2253
+       let t2275 = prediction_output.s0.n.n + t2252
+       let t2274 = prediction_output.s0.n.n + t2251
+       let t2273 = prediction_output.s0.n.n + t2250
+       let t2272 = prediction_output.s0.n.n + t2249
+       let t2271 = prediction_output.s0.n.n + t2248
+       let t2270 = prediction_output.s0.n.n + t2247
+       let t2269 = prediction_output.s0.n.n + t2246
+       let t2268 = prediction_output.s0.n.n + t2245
+       let t2267 = prediction_output.s0.n.n + t2244
+       let t2266 = prediction_output.s0.n.n + t2243
+       let t2265 = prediction_output.s0.n.n + t2242
+       for (f7.s1.r77$x, 0, num_stages) {
+        let t2079 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2265]
+        let t2080 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2266]
+        let t2081.s = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2267]
+        let t2082 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2268]
+        let t2083 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2269]
+        let t2084 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2270]
+        let t2086 = max(t2083*t2084, 1.000000f)/t2225
+        let t2087.s = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2271]
+        let t2088 = 1.000000f < t2083
+        let t2089 = f7.s1.r77$x == 0
+        let t2090 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2272]
+        let t2091 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2273]
+        let t2092 = schedule_features[(f7.s1.r77$x*schedule_features.stride.2) + t2274]
+        let t2125 = f7.s1.r77$x*schedule_features.stride.2
+        let t2126 = (f7.s1.r77$x*32) + t2264
+        let t2127 = t2080*t2081.s
+        let t2128 = max(t2087.s, 1.000000f)
+        let t2129 = max(t2083*t2084, 1.000000f)
+        f7[0] = f7[0] + (((schedule_features[t2125 + t2275]*relu1[t2126 + 27]) + (((relu1[t2126 + 24]*t2079) + (((select(schedule_features[t2125 + t2276] == 0.000000f, (relu1[t2126]*t2127) + (relu1[t2126 + 1]*t2082), (relu1[t2126 + 2]*t2127) + (relu1[t2126 + 3]*t2082))*((float32)ceil_f32(t2086)/max(t2086, 1.000000f))) + (((relu1[t2126 + 23]*(((schedule_features[t2125 + t2277]*min(4096.000000f/t2128, t2083))*t2083)*t2084)) + (select(t2088, (relu1[t2126 + 22]*(t2080 + t2082))/t2128, 0.000000f) + (((select(t2088, relu1[t2126 + 16], select(t2089, relu1[t2126 + 17], relu1[t2126 + 18]))*((schedule_features[t2125 + t2278]/t2128)*t2083)) + (schedule_features[t2125 + t2279]*select(t2088, relu1[t2126 + 19], select(t2089, relu1[t2126 + 20], relu1[t2126 + 21]))))*t2079)))*2.000000f)) + ((relu1[t2126 + 15]*(schedule_features[t2125 + t2280]*t2129)) + ((relu1[t2126 + 14]*(schedule_features[t2125 + t2281]*t2129)) + ((relu1[t2126 + 13]*(t2080*t2090)) + ((relu1[t2126 + 12]*(t2082*t2090)) + ((relu1[t2126 + 11]*(t2080*t2091)) + ((relu1[t2126 + 10]*(t2082*t2091)) + ((relu1[t2126 + 9]*(schedule_features[t2125 + t2282]*t2080)) + ((relu1[t2126 + 8]*(schedule_features[t2125 + t2283]*t2082)) + ((relu1[t2126 + 7]*(schedule_features[t2125 + t2284]*t2080)) + ((relu1[t2126 + 5]*(schedule_features[t2125 + t2285]*t2079)) + (relu1[t2126 + 6]*(schedule_features[t2125 + t2286]*t2079)))))))))))))) + ((relu1[t2126 + 26]*((t2083 + -1.000000f)*t2092)) + (select(t2088, relu1[t2126 + 25], 0.000000f)*t2092))))*0.000000f)
+       }
+      }
+      consume f7 {
+       prediction_output[prediction_output.s0.n.n + prediction_output.s0.n.n.base] = f7[0]
+      }
+      free f7
+     }
+    }
+   }
+  }
+ }
+ produce loss_output {
+  loss_output[0] = 0.000000f
+ }
+ produce load_cost_output {
+  consume relu1 {
+   let t2287 = ((num_stages + -1)/4)*128
+   let t2295 = schedule_features.stride.1*34
+   let t2296 = schedule_features.stride.1*33
+   let t2292 = schedule_features.stride.1*32
+   let t2294 = schedule_features.stride.1*31
+   let t2298 = schedule_features.stride.1*28
+   let t2297 = schedule_features.stride.1*27
+   let t2299 = schedule_features.stride.1*26
+   let t2293 = schedule_features.stride.1*25
+   let t2291 = schedule_features.stride.1*24
+   let t2300 = schedule_features.stride.1*19
+   let t2301 = schedule_features.stride.1*18
+   let t2290 = schedule_features.stride.1*10
+   let t2289 = schedule_features.stride.1*9
+   let t2288 = ((schedule_features.min.2*schedule_features.stride.2) + (schedule_features.min.1*schedule_features.stride.1)) + schedule_features.min.0
+   for (load_cost_output.s0.n, load_cost_output.min.0, load_cost_output.extent.0) {
+    allocate f1[float32 * 1]
+    produce f1 {
+     f1[0] = 0.000000f
+     let t2302 = (load_cost_output.s0.n - relu1.n.min_realized)*(t2287 + 128)
+     let t2309 = load_cost_output.s0.n - t2288
+     let t2316 = (t2301 - t2288) + load_cost_output.s0.n
+     let t2315 = (t2300 - t2288) + load_cost_output.s0.n
+     let t2314 = (t2299 - t2288) + load_cost_output.s0.n
+     let t2313 = (t2298 - t2288) + load_cost_output.s0.n
+     let t2312 = (t2297 - t2288) + load_cost_output.s0.n
+     let t2311 = (t2296 - t2288) + load_cost_output.s0.n
+     let t2310 = (t2295 - t2288) + load_cost_output.s0.n
+     let t2308 = (t2294 - t2288) + load_cost_output.s0.n
+     let t2307 = (t2293 - t2288) + load_cost_output.s0.n
+     let t2306 = (t2292 - t2288) + load_cost_output.s0.n
+     let t2305 = (t2291 - t2288) + load_cost_output.s0.n
+     let t2304 = (t2290 - t2288) + load_cost_output.s0.n
+     let t2303 = (t2289 - t2288) + load_cost_output.s0.n
+     for (f1.s1.r77$x, 0, num_stages) {
+      let t2093 = (f1.s1.r77$x*32) + t2302
+      let t2096.s = schedule_features[(f1.s1.r77$x*schedule_features.stride.2) + t2303]*schedule_features[(f1.s1.r77$x*schedule_features.stride.2) + t2304]
+      let t2097 = schedule_features[(f1.s1.r77$x*schedule_features.stride.2) + t2305]
+      let t2098 = schedule_features[(f1.s1.r77$x*schedule_features.stride.2) + t2306]
+      let t2099 = schedule_features[(f1.s1.r77$x*schedule_features.stride.2) + t2307]
+      let t2100 = schedule_features[(f1.s1.r77$x*schedule_features.stride.2) + t2308]
+      let t2101 = schedule_features[(f1.s1.r77$x*schedule_features.stride.2) + t2309]
+      let t2131 = f1.s1.r77$x*schedule_features.stride.2
+      let t2132 = max(t2096.s, 1.000000f)
+      f1[0] = f1[0] + ((relu1[t2093 + 15]*(schedule_features[t2131 + t2310]*t2132)) + ((relu1[t2093 + 14]*(schedule_features[t2131 + t2311]*t2132)) + ((relu1[t2093 + 13]*(t2097*t2098)) + ((relu1[t2093 + 12]*(t2098*t2099)) + ((relu1[t2093 + 11]*(t2097*t2100)) + ((relu1[t2093 + 10]*(t2099*t2100)) + ((relu1[t2093 + 9]*(schedule_features[t2131 + t2312]*t2097)) + ((relu1[t2093 + 8]*(schedule_features[t2131 + t2313]*t2099)) + ((relu1[t2093 + 7]*(schedule_features[t2131 + t2314]*t2097)) + ((relu1[t2093 + 5]*(schedule_features[t2131 + t2315]*t2101)) + (relu1[t2093 + 6]*(schedule_features[t2131 + t2316]*t2101))))))))))))
+     }
+    }
+    consume f1 {
+     load_cost_output[load_cost_output.s0.n - load_cost_output.min.0] = f1[0]
+    }
+    free f1
+   }
+  }
+ }
+ produce store_cost_output {
+  consume relu1 {
+   let t2317 = ((num_stages + -1)/4)*128
+   let t2319 = schedule_features.stride.1*30
+   let t2325 = schedule_features.stride.1*29
+   let t2324 = schedule_features.stride.1*25
+   let t2323 = schedule_features.stride.1*24
+   let t2322 = schedule_features.stride.1*12
+   let t2326 = schedule_features.stride.1*11
+   let t2321 = schedule_features.stride.1*10
+   let t2320 = schedule_features.stride.1*9
+   let t2318 = ((schedule_features.min.2*schedule_features.stride.2) + (schedule_features.min.1*schedule_features.stride.1)) + schedule_features.min.0
+   for (store_cost_output.s0.n, store_cost_output.min.0, store_cost_output.extent.0) {
+    allocate f3[float32 * 1]
+    produce f3 {
+     f3[0] = 0.000000f
+     let t2327 = (store_cost_output.s0.n - relu1.n.min_realized)*(t2317 + 128)
+     let t2334 = store_cost_output.s0.n - t2318
+     let t2336 = (t2326 - t2318) + store_cost_output.s0.n
+     let t2335 = (t2325 - t2318) + store_cost_output.s0.n
+     let t2333 = (t2324 - t2318) + store_cost_output.s0.n
+     let t2332 = (t2323 - t2318) + store_cost_output.s0.n
+     let t2331 = (t2322 - t2318) + store_cost_output.s0.n
+     let t2330 = (t2321 - t2318) + store_cost_output.s0.n
+     let t2329 = (t2320 - t2318) + store_cost_output.s0.n
+     let t2328 = (t2319 - t2318) + store_cost_output.s0.n
+     for (f3.s1.r77$x, 0, num_stages) {
+      let t2102 = (f3.s1.r77$x*32) + t2327
+      let t2105.s = schedule_features[(f3.s1.r77$x*schedule_features.stride.2) + t2328]
+      let t2106 = schedule_features[(f3.s1.r77$x*schedule_features.stride.2) + t2329]
+      let t2107 = 1.000000f < t2106
+      let t2108 = f3.s1.r77$x == 0
+      let t2133 = f3.s1.r77$x*schedule_features.stride.2
+      let t2134 = max(t2105.s, 1.000000f)
+      f3[0] = f3[0] + (((relu1[t2102 + 23]*(schedule_features[t2133 + t2330]*((schedule_features[t2133 + t2331]*min(4096.000000f/t2134, t2106))*t2106))) + (select(t2107, (relu1[t2102 + 22]*(schedule_features[t2133 + t2332] + schedule_features[t2133 + t2333]))/t2134, 0.000000f) + (schedule_features[t2133 + t2334]*((select(t2107, relu1[t2102 + 16], select(t2108, relu1[t2102 + 17], relu1[t2102 + 18]))*((schedule_features[t2133 + t2335]/t2134)*t2106)) + (schedule_features[t2133 + t2336]*select(t2107, relu1[t2102 + 19], select(t2108, relu1[t2102 + 20], relu1[t2102 + 21])))))))*2.000000f)
+     }
+    }
+    consume f3 {
+     store_cost_output[store_cost_output.s0.n - store_cost_output.min.0] = f3[0]
+    }
+    free f3
+   }
+  }
+ }
+ produce compute_cost_output {
+  consume relu1 {
+   let t2338 = ((num_stages + -1)/4)*128
+   let t2341 = schedule_features.stride.1*25
+   let t2340 = schedule_features.stride.1*24
+   let t2339 = schedule_features.stride.1*22
+   let t2345 = schedule_features.stride.1*17
+   let t2343 = schedule_features.stride.1*10
+   let t2342 = schedule_features.stride.1*9
+   let t2337 = ((schedule_features.min.2*schedule_features.stride.2) + (schedule_features.min.1*schedule_features.stride.1)) + schedule_features.min.0
+   let t2344 = float32(num_cores)
+   for (compute_cost_output.s0.n, compute_cost_output.min.0, compute_cost_output.extent.0) {
+    allocate f5[float32 * 1]
+    produce f5 {
+     f5[0] = 0.000000f
+     let t2346 = (compute_cost_output.s0.n - relu1.n.min_realized)*(t2338 + 128)
+     let t2352 = (t2345 - t2337) + compute_cost_output.s0.n
+     let t2351 = (t2343 - t2337) + compute_cost_output.s0.n
+     let t2350 = (t2342 - t2337) + compute_cost_output.s0.n
+     let t2349 = (t2341 - t2337) + compute_cost_output.s0.n
+     let t2348 = (t2340 - t2337) + compute_cost_output.s0.n
+     let t2347 = (t2339 - t2337) + compute_cost_output.s0.n
+     for (f5.s1.r77$x, 0, num_stages) {
+      let t2112 = schedule_features[(f5.s1.r77$x*schedule_features.stride.2) + t2347]*schedule_features[(f5.s1.r77$x*schedule_features.stride.2) + t2348]
+      let t2114 = schedule_features[(f5.s1.r77$x*schedule_features.stride.2) + t2349]
+      let t2115 = max(schedule_features[(f5.s1.r77$x*schedule_features.stride.2) + t2350]*schedule_features[(f5.s1.r77$x*schedule_features.stride.2) + t2351], 1.000000f)/t2344
+      let t2137 = (f5.s1.r77$x*32) + t2346
+      f5[0] = f5[0] + (select(schedule_features[(f5.s1.r77$x*schedule_features.stride.2) + t2352] == 0.000000f, (relu1[t2137]*t2112) + (relu1[t2137 + 1]*t2114), (relu1[t2137 + 2]*t2112) + (relu1[t2137 + 3]*t2114))*((float32)ceil_f32(t2115)/max(t2115, 1.000000f)))
+     }
+    }
+    consume f5 {
+     compute_cost_output[compute_cost_output.s0.n - compute_cost_output.min.0] = f5[0]
+    }
+    free f5
+   }
+  }
+ }
+ free relu1
+}
+}
+
+
