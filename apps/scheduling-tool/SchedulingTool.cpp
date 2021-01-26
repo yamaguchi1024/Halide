@@ -2331,12 +2331,9 @@ struct State {
                 child->calculate_cost(dag, params, cost_model, true);
                 cost_model->evaluate_costs();
 
-                float time = realize_output(dag, outputs);
-
                 std::stringstream stream;
                 stream << "{\"type\": \"line_cost\", ";
                 stream << " \"linenum\": \"" << i << "\"";
-                stream << ", \"runtime\": \"" << time << "\"";
                 stream << ", \"costs\": \"" << normalize_maincost(child->cost);
                 stream << "\", \"load_costs\": \"" << normalize_features(child->load_cost);
                 stream << "\", \"store_costs\": \"" << normalize_features(child->store_cost);
@@ -2476,9 +2473,6 @@ struct State {
                     tiling_childs[i].first->calculate_cost(dag, params, cost_model, true);
                     cost_model->evaluate_costs();
 
-                    float time = realize_output(dag, outputs);
-                    realizestr << time;
-
                     auto cost = tiling_childs[i].first->cost;
                     auto tiling = tiling_childs[i].second;
                     coststr << normalize_maincost(cost);
@@ -2492,7 +2486,6 @@ struct State {
                 stream << "{\"type\": \"phase1\", ";
                 stream << "\"func\": \"" << node->func.name() << "\",";
                 stream << " \"cost\": \"" << coststr.str() << "\", ";
-                stream << " \"runtime\": \"" << realizestr.str() << "\", ";
                 stream << " \"load_costs\": \"" << loadcoststr.str() << "\", ";
                 stream << " \"store_costs\": \"" << storecoststr.str() << "\", ";
                 stream << " \"compute_costs\": \"" << computecoststr.str() << "\", ";
@@ -2846,17 +2839,17 @@ IntrusivePtr<State> optimal_schedule_pass(FunctionDAG &dag,
         selected->calculate_cost(dag, params, cost_model, true);
         cost_model->evaluate_costs();
 
-        auto time = realize_output(dag, outputs);
+        //auto time = realize_output(dag, outputs);
 
         std::stringstream stream;
         stream << "{\"type\": \"cost\", \"contents\": ";
         stream << normalize_maincost(selected->cost);
         stream << ", \"load_costs\": \"" << normalize_features(selected->load_cost);
         stream << "\", \"store_costs\": \"" << normalize_features(selected->store_cost);
-        stream << "\", \"compute_costs\": \"" << normalize_features(selected->compute_cost) << "\"}\n";
+        stream << "\", \"compute_costs\": \"" << normalize_features(selected->compute_cost) << "\"}";
 
-        stream << "{\"type\": \"realize\", \"contents\": ";
-        stream << time << "}";
+        //stream << "{\"type\": \"realize\", \"contents\": ";
+        //stream << "" << "}";
         std::cout << stream.str() << std::endl;
 
         q.clear();
@@ -2971,12 +2964,14 @@ void generate_schedule(const std::vector<Function> &outputs,
     // memo: make Halide schedule here
     optimal->apply_schedule(dag, params);
 
-    auto time = realize_output(dag, outputs);
+    //auto time = realize_output(dag, outputs);
 
+    /*
     std::stringstream stream;
     stream << "{\"type\": \"realize\", \"contents\": ";
-    stream << "\"Run Time: " << time << "\"}";
+    stream << "\"Run Time: " << time << " ms\"}";
     std::cout << stream.str() << std::endl;
+    */
 
     string schedule_file = get_env_variable("HL_SCHEDULE_FILE");
     if (!schedule_file.empty()) {
