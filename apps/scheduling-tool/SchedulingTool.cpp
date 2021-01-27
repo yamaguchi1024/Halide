@@ -2330,6 +2330,7 @@ struct State {
 
                 child->calculate_cost(dag, params, cost_model, true);
                 cost_model->evaluate_costs();
+                if (child->cost > 1000000) continue;
 
                 std::stringstream stream;
                 stream << "{\"type\": \"line_cost\", ";
@@ -2353,7 +2354,7 @@ struct State {
                 stream << "\"func\": \"" << fname << "\",";
                 stream << " \"contents\": \"";
                 stream << "Choose the compute location of <font color=\'red\'> Func " << fname << "</font>";
-                stream << " from (0 ~ " << tile_options.size() - 1 << ")";
+                //stream << " from (0 ~ " << tile_options.size() - 1 << ")";
                 stream << "\"}";
                 std::cout << stream.str() << std::endl;
 
